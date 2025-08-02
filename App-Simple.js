@@ -91,17 +91,6 @@ export default function App() {
     }
   };
 
-  // Handle barcode lookup
-  const handleBarcodeAnalysis = () => {
-    if (!barcodeInput.trim()) {
-      Alert.alert('Error', 'Please enter a barcode to analyze.');
-      return;
-    }
-    
-    fetchProductData(barcodeInput.trim());
-    setCurrentScreen('result');
-  };
-
   // Analyze ingredients for gluten content
   const analyzeIngredients = (ingredients) => {
     if (!ingredients || typeof ingredients !== 'string') {
@@ -203,6 +192,17 @@ export default function App() {
     }
   };
 
+  // Handle barcode lookup
+  const handleBarcodeAnalysis = () => {
+    if (!barcodeInput.trim()) {
+      Alert.alert('Error', 'Please enter a barcode to analyze.');
+      return;
+    }
+    
+    fetchProductData(barcodeInput.trim());
+    setCurrentScreen('result');
+  };
+
   // Handle manual ingredient analysis
   const handleManualAnalysis = () => {
     if (!manualIngredients.trim()) {
@@ -265,7 +265,7 @@ export default function App() {
           style={[styles.button, styles.primaryButton]}
           onPress={() => setCurrentScreen('barcode')}
         >
-          <Text style={styles.buttonText}>� Enter Barcode</Text>
+          <Text style={styles.buttonText}>🔢 Enter Barcode</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
@@ -483,7 +483,7 @@ export default function App() {
                 setBarcodeInput('');
               }}
             >
-              <Text style={styles.buttonText}>� Check Another</Text>
+              <Text style={styles.buttonText}>🔢 Check Another</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -507,7 +507,7 @@ export default function App() {
       
       <ScrollView style={styles.favoritesContainer}>
         {favorites.length === 0 ? (
-          <Text style={styles.emptyText}>No favorite products yet. Start scanning to add some!</Text>
+          <Text style={styles.emptyText}>No favorite products yet. Start checking products to add some!</Text>
         ) : (
           favorites.map((product, index) => (
             <View key={index} style={styles.favoriteItem}>
@@ -570,6 +570,13 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
+    marginBottom: 5,
+  },
+  note: {
+    fontSize: 12,
+    color: '#888',
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
   buttonContainer: {
     paddingHorizontal: 20,
@@ -609,40 +616,37 @@ const styles = StyleSheet.create({
   tertiaryButtonText: {
     color: '#FF9800',
   },
-  scannerContainer: {
-    flex: 1,
-    backgroundColor: 'black',
-  },
-  scannerOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  scannerFrame: {
-    width: 250,
-    height: 250,
-    borderWidth: 2,
-    borderColor: 'white',
-    backgroundColor: 'transparent',
-  },
-  scannerText: {
-    color: 'white',
-    fontSize: 16,
-    marginTop: 20,
-    textAlign: 'center',
+  testSection: {
     paddingHorizontal: 20,
+    paddingTop: 20,
+  },
+  testTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+  },
+  testButton: {
+    backgroundColor: '#E8F5E8',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  testButtonText: {
+    fontSize: 14,
+    color: '#2E7D32',
   },
   backButton: {
     position: 'absolute',
     top: 50,
     left: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.1)',
     paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 8,
   },
   backButtonText: {
-    color: 'white',
+    color: '#333',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -665,6 +669,24 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     textAlignVertical: 'top',
     marginBottom: 20,
+  },
+  exampleSection: {
+    marginTop: 20,
+    backgroundColor: 'white',
+    padding: 15,
+    borderRadius: 8,
+  },
+  exampleTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 10,
+  },
+  exampleText: {
+    fontSize: 14,
+    color: '#2196F3',
+    marginBottom: 5,
+    textDecorationLine: 'underline',
   },
   resultContainer: {
     flex: 1,
@@ -803,52 +825,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 50,
     paddingHorizontal: 20,
-  },
-  testSection: {
-    marginTop: 20,
-    padding: 20,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 10,
-  },
-  testTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    textAlign: 'center',
-  },
-  testButton: {
-    backgroundColor: '#4CAF50',
-    padding: 10,
-    borderRadius: 8,
-    marginVertical: 5,
-  },
-  testButtonText: {
-    color: 'white',
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
-  note: {
-    fontSize: 12,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 10,
-    fontStyle: 'italic',
-  },
-  exampleSection: {
-    marginTop: 15,
-    padding: 15,
-    backgroundColor: '#e8f5e8',
-    borderRadius: 8,
-  },
-  exampleTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    color: '#333',
-  },
-  exampleText: {
-    fontSize: 12,
-    color: '#666',
-    marginBottom: 4,
   },
 });
