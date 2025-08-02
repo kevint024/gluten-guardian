@@ -175,9 +175,7 @@ For issues or questions:
 ## 🙏 Acknowledgments
 
 - [Open Food Facts](https://world.openfoodfacts.org/) for the free product database
-- [Expo](https://expo.dev/) for the excellent development platform
-- The React Native community for comprehensive documentation
-- Gluten-free community for ingredient awareness
+- Claude Sonnet (Expiditing Writing Code)
 
 ---
 
