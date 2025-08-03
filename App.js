@@ -115,11 +115,12 @@ export default function App() {
 
   // Analyze ingredients for gluten content
   const analyzeIngredients = (ingredients) => {
-    if (!ingredients || typeof ingredients !== 'string') {
+    if (!ingredients || typeof ingredients !== 'string' || ingredients.trim().length === 0) {
       return {
         status: 'error',
-        message: 'No ingredients provided',
-        flaggedIngredients: []
+        message: 'No ingredients information available',
+        flaggedIngredients: [],
+        ambiguousIngredients: []
       };
     }
 
@@ -376,11 +377,10 @@ export default function App() {
               barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'],
             }}
             onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-          >
-            <View style={styles.scannerOverlay}>
-              <View style={styles.scannerFrame} />
-            </View>
-          </CameraView>
+          />
+          <View style={styles.scannerOverlay}>
+            <View style={styles.scannerFrame} />
+          </View>
         </View>
         
         <TouchableOpacity
@@ -395,6 +395,13 @@ export default function App() {
 
   // Handle barcode scanned from camera
   const handleBarCodeScanned = ({ data }) => {
+    // Validate that we have valid barcode data
+    if (!data || typeof data !== 'string' || data.trim().length === 0) {
+      Alert.alert('Error', 'Invalid barcode data received. Please try scanning again.');
+      setScanned(false);
+      return;
+    }
+    
     setScanned(true);
     setBarcodeInput(data);
     fetchProductData(data);
@@ -481,7 +488,7 @@ export default function App() {
             </Text>
           </View>
           
-          {analysisResult.flaggedIngredients.length > 0 && (
+          {analysisResult.flaggedIngredients && analysisResult.flaggedIngredients.length > 0 && (
             <View style={styles.flaggedSection}>
               <Text style={styles.flaggedTitle}>🚫 Gluten-containing ingredients:</Text>
               {analysisResult.flaggedIngredients.map((ingredient, index) => (
@@ -490,7 +497,7 @@ export default function App() {
             </View>
           )}
           
-          {analysisResult.ambiguousIngredients.length > 0 && (
+          {analysisResult.ambiguousIngredients && analysisResult.ambiguousIngredients.length > 0 && (
             <View style={styles.flaggedSection}>
               <Text style={styles.cautionTitle}>⚠️ Potentially problematic ingredients:</Text>
               {analysisResult.ambiguousIngredients.map((ingredient, index) => (
