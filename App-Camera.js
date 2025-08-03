@@ -34,17 +34,16 @@ const AMBIGUOUS_INGREDIENTS = [
   'food starch', 'starch', 'mono and diglycerides', 'lecithin'
 ];
 
-export default function App() {
+export default function AppCamera() {
   const [currentScreen, setCurrentScreen] = useState('home');
   const [manualIngredients, setManualIngredients] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
-  const [foodSearchInput, setFoodSearchInput] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [productData, setProductData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [favorites, setFavorites] = useState([]);
   const [cache, setCache] = useState({});
+  
   // Camera-specific states
   const [hasPermission, setHasPermission] = useState(null);
   const [scanned, setScanned] = useState(false);
@@ -53,12 +52,6 @@ export default function App() {
     loadFavorites();
     loadCache();
   }, []);
-
-  // Get camera permissions
-  const getCameraPermissions = async () => {
-    const { status } = await Camera.requestCameraPermissionsAsync();
-    setHasPermission(status === 'granted');
-  };
 
   // Load favorites from AsyncStorage
   const loadFavorites = async () => {
@@ -104,7 +97,37 @@ export default function App() {
     }
   };
 
-  // Handle barcode lookup
+  // Get barcode scanner permissions
+  // Get camera permissions
+  const getCameraPermissions = async () => {
+    const { status } = await Camera.requestCameraPermissionsAsync();
+    setHasPermission(status === 'granted');
+  };
+
+  // Handle barcode scanning
+  const handleBarCodeScanned = ({ type, data }) => {
+    setScanned(true);
+    setBarcodeInput(data);
+    Alert.alert(
+      'Barcode Scanned!',
+      `Scanned barcode: ${data}`,
+      [
+        {
+          text: 'Analyze Product',
+          onPress: () => {
+            fetchProductData(data);
+            setCurrentScreen('result');
+          }
+        },
+        {
+          text: 'Scan Again',
+          onPress: () => setScanned(false)
+        }
+      ]
+    );
+  };
+
+  // Handle manual barcode lookup
   const handleBarcodeAnalysis = () => {
     if (!barcodeInput.trim()) {
       Alert.alert('Error', 'Please enter a barcode to analyze.');
@@ -117,12 +140,11 @@ export default function App() {
 
   // Analyze ingredients for gluten content
   const analyzeIngredients = (ingredients) => {
-    if (!ingredients || typeof ingredients !== 'string' || ingredients.trim().length === 0) {
+    if (!ingredients || typeof ingredients !== 'string') {
       return {
         status: 'error',
-        message: 'No ingredients information available',
-        flaggedIngredients: [],
-        ambiguousIngredients: []
+        message: 'No ingredients provided',
+        flaggedIngredients: []
       };
     }
 
@@ -235,63 +257,6 @@ export default function App() {
     setCurrentScreen('result');
   };
 
-  // Search for food products by name
-  const searchFoodProducts = async (searchTerm) => {
-    if (!searchTerm || searchTerm.trim().length < 2) {
-      Alert.alert('Error', 'Please enter at least 2 characters to search.');
-      return;
-    }
-
-    setLoading(true);
-    setSearchResults([]);
-
-    try {
-      const response = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(searchTerm)}&json=true&page_size=10&fields=code,product_name,brands,ingredients_text`);
-      const data = await response.json();
-      
-      if (data.products && data.products.length > 0) {
-        // Filter out products without ingredients
-        const productsWithIngredients = data.products.filter(product => 
-          product.ingredients_text && product.ingredients_text.trim().length > 0
-        );
-        setSearchResults(productsWithIngredients.slice(0, 8)); // Limit to 8 results
-      } else {
-        setSearchResults([]);
-        Alert.alert('No Results', 'No products found with that name. Try a different search term.');
-      }
-    } catch (error) {
-      console.error('Error searching products:', error);
-      Alert.alert('Error', 'Failed to search for products. Please check your internet connection.');
-      setSearchResults([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle selecting a product from search results
-  const handleProductSelection = (product) => {
-    const productData = {
-      product_name: product.product_name || 'Unknown Product',
-      ingredients_text: product.ingredients_text || '',
-      brands: product.brands || '',
-      barcode: product.code
-    };
-    
-    setProductData(productData);
-    
-    // Analyze ingredients
-    const result = analyzeIngredients(productData.ingredients_text);
-    setAnalysisResult(result);
-    
-    // Cache the product data if it has a barcode
-    if (product.code) {
-      const newCache = { ...cache, [product.code]: productData };
-      saveCache(newCache);
-    }
-    
-    setCurrentScreen('result');
-  };
-
   // Add/remove product from favorites
   const toggleFavorite = (product) => {
     if (!product || !product.barcode) return;
@@ -302,12 +267,7 @@ export default function App() {
     if (isFavorite) {
       newFavorites = favorites.filter(fav => fav.barcode !== product.barcode);
     } else {
-      // Add timestamp when adding to favorites
-      const favoriteProduct = {
-        ...product,
-        dateAdded: new Date().toISOString()
-      };
-      newFavorites = [...favorites, favoriteProduct];
+      newFavorites = [...favorites, product];
     }
     
     saveFavorites(newFavorites);
@@ -332,8 +292,8 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>🛡️ Gluten Guardian</Text>
-        <Text style={styles.subtitle}>Your gluten-free companion</Text>
-        <Text style={styles.note}>📱 Camera-Enabled Version - Scan barcodes or enter manually</Text>
+        <Text style={styles.subtitle}>Camera Test Version</Text>
+        <Text style={styles.note}>📷 Testing barcode scanning with camera</Text>
       </View>
       
       <View style={styles.buttonContainer}>
@@ -343,7 +303,6 @@ export default function App() {
             if (hasPermission === null) {
               getCameraPermissions();
             }
-            setScanned(false); // Reset scanned state
             setCurrentScreen('scanner');
           }}
         >
@@ -352,30 +311,23 @@ export default function App() {
         
         <TouchableOpacity
           style={[styles.button, styles.secondaryButton]}
-          onPress={() => setCurrentScreen('manualBarcode')}
+          onPress={() => setCurrentScreen('barcode')}
         >
           <Text style={[styles.buttonText, styles.secondaryButtonText]}>🔢 Enter Barcode</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
-          style={[styles.button, styles.secondaryButton]}
-          onPress={() => setCurrentScreen('searchFood')}
-        >
-          <Text style={[styles.buttonText, styles.secondaryButtonText]}>🔍 Search Food</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={[styles.button, styles.secondaryButton]}
+          style={[styles.button, styles.tertiaryButton]}
           onPress={() => setCurrentScreen('manual')}
         >
-          <Text style={[styles.buttonText, styles.secondaryButtonText]}>✏️ Manual Check</Text>
+          <Text style={[styles.buttonText, styles.tertiaryButtonText]}>✏️ Manual Check</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
-          style={[styles.button, styles.tertiaryButton]}
+          style={[styles.button, styles.favoriteButton]}
           onPress={() => setCurrentScreen('favorites')}
         >
-          <Text style={[styles.buttonText, styles.tertiaryButtonText]}>⭐ Favorites ({favorites.length})</Text>
+          <Text style={styles.buttonText}>⭐ Favorites ({favorites.length})</Text>
         </TouchableOpacity>
       </View>
       
@@ -405,194 +357,79 @@ export default function App() {
     </SafeAreaView>
   );
 
-  // Barcode Scanner Screen
+  // Camera Scanner Screen
   const renderScannerScreen = () => {
     if (hasPermission === null) {
       return (
-        <SafeAreaView style={styles.container}>
-          <View style={styles.permissionContainer}>
-            <Text style={styles.permissionText}>Camera permission required</Text>
-            <TouchableOpacity style={styles.button} onPress={getCameraPermissions}>
-              <Text style={styles.buttonText}>Grant Camera Permission</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.button, styles.secondaryButton]}
-              onPress={() => setCurrentScreen('home')}
-            >
-              <Text style={styles.buttonText}>Back to Home</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
+        <View style={styles.container}>
+          <Text style={styles.loadingText}>Requesting camera permission...</Text>
+        </View>
       );
     }
+    
     if (hasPermission === false) {
       return (
-        <SafeAreaView style={styles.container}>
-          <View style={styles.permissionContainer}>
-            <Text style={styles.permissionText}>Camera access denied. Please enable camera permissions in settings.</Text>
-            <TouchableOpacity
-              style={[styles.button, styles.secondaryButton]}
-              onPress={() => setCurrentScreen('home')}
-            >
-              <Text style={styles.buttonText}>Back to Home</Text>
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
+        <View style={styles.container}>
+          <Text style={styles.errorText}>No access to camera</Text>
+          <TouchableOpacity
+            style={styles.button}
+            onPress={getCameraPermissions}
+          >
+            <Text style={styles.buttonText}>Grant Permission</Text>
+          </TouchableOpacity>
+        </View>
       );
     }
 
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Scan Product Barcode</Text>
-          <Text style={styles.subtitle}>Align the barcode within the frame to scan</Text>
+      <View style={styles.scannerContainer}>
+        <CameraView
+          style={StyleSheet.absoluteFillObject}
+          barcodeScannerSettings={{
+            barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'],
+          }}
+          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+        />
+        <View style={styles.scannerOverlay}>
+          <View style={styles.scannerFrame} />
+          <Text style={styles.scannerText}>
+            Point your camera at a barcode
+          </Text>
+          {scanned && (
+            <TouchableOpacity
+              style={[styles.button, styles.primaryButton, { marginTop: 20 }]}
+              onPress={() => setScanned(false)}
+            >
+              <Text style={styles.buttonText}>Tap to Scan Again</Text>
+            </TouchableOpacity>
+          )}
         </View>
-        
-        <View style={styles.scannerContainer}>
-          <CameraView
-            style={styles.scanner}
-            barcodeScannerSettings={{
-              barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'],
-            }}
-            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
-          />
-          <View style={styles.scannerOverlay}>
-            <View style={styles.scannerFrame} />
-          </View>
-        </View>
-        
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => setCurrentScreen('home')}
         >
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
-      </SafeAreaView>
+      </View>
     );
   };
 
-  // Handle barcode scanned from camera
-  const handleBarCodeScanned = ({ data }) => {
-    // Validate that we have valid barcode data
-    if (!data || typeof data !== 'string' || data.trim().length === 0) {
-      Alert.alert('Error', 'Invalid barcode data received. Please try scanning again.');
-      setScanned(false);
-      return;
-    }
-    
-    setScanned(true);
-    setBarcodeInput(data);
-    fetchProductData(data);
-    setCurrentScreen('result');
-  };
-
-  // Food Search Screen
-  const renderFoodSearchScreen = () => (
+  // Barcode Input Screen
+  const renderBarcodeScreen = () => (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>Search Food Products</Text>
-        <Text style={styles.subtitle}>Enter a food name to find products</Text>
+        <Text style={styles.title}>Enter Barcode</Text>
+        <Text style={styles.subtitle}>Type a product barcode to analyze</Text>
       </View>
       
       <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Enter food name:</Text>
+        <Text style={styles.inputLabel}>Enter barcode number:</Text>
         <TextInput
-          style={styles.barcodeInput}
-          placeholder="Enter food name (e.g., Doritos, Nutella, Cheerios)"
-          value={foodSearchInput}
-          onChangeText={setFoodSearchInput}
-          autoCapitalize="words"
-          onSubmitEditing={() => searchFoodProducts(foodSearchInput)}
-        />
-        
-        <TouchableOpacity
-          style={[styles.button, styles.primaryButton]}
-          onPress={() => searchFoodProducts(foodSearchInput)}
-          disabled={loading}
-        >
-          <Text style={styles.buttonText}>
-            {loading ? '🔍 Searching...' : '🔍 Search Products'}
-          </Text>
-        </TouchableOpacity>
-        
-        {loading && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#2196F3" />
-            <Text style={styles.loadingText}>Searching for products...</Text>
-          </View>
-        )}
-        
-        {searchResults.length > 0 && (
-          <ScrollView style={styles.searchResultsContainer}>
-            <Text style={styles.resultsTitle}>Found {searchResults.length} products:</Text>
-            {searchResults.map((product, index) => (
-              <TouchableOpacity
-                key={index}
-                style={styles.searchResultItem}
-                onPress={() => handleProductSelection(product)}
-              >
-                <Text style={styles.searchResultName}>{product.product_name}</Text>
-                {product.brands && (
-                  <Text style={styles.searchResultBrand}>{product.brands}</Text>
-                )}
-                <Text style={styles.searchResultPreview}>
-                  {product.ingredients_text.substring(0, 100)}
-                  {product.ingredients_text.length > 100 ? '...' : ''}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        )}
-        
-        <View style={styles.exampleSection}>
-          <Text style={styles.exampleTitle}>💡 Example searches to try:</Text>
-          <TouchableOpacity
-            style={styles.exampleButton}
-            onPress={() => {
-              setFoodSearchInput('Doritos');
-              searchFoodProducts('Doritos');
-            }}
-          >
-            <Text style={styles.exampleButtonText}>Try: Doritos</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.exampleButton}
-            onPress={() => {
-              setFoodSearchInput('Cheerios');
-              searchFoodProducts('Cheerios');
-            }}
-          >
-            <Text style={styles.exampleButtonText}>Try: Cheerios</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-      
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => setCurrentScreen('home')}
-      >
-        <Text style={styles.backButtonText}>← Back</Text>
-      </TouchableOpacity>
-    </SafeAreaView>
-  );
-
-  // Manual Barcode Entry Screen
-  const renderManualBarcodeScreen = () => (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Manual Barcode Entry</Text>
-        <Text style={styles.subtitle}>Enter a product barcode to look up</Text>
-      </View>
-      
-      <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Enter barcode:</Text>
-        <TextInput
-          style={styles.barcodeInput}
-          placeholder="Enter barcode number (e.g., 123456789012)"
+          style={styles.textInput}
+          placeholder="e.g. 3017620422003"
           value={barcodeInput}
           onChangeText={setBarcodeInput}
           keyboardType="numeric"
-          maxLength={20}
         />
         
         <TouchableOpacity
@@ -603,18 +440,15 @@ export default function App() {
         </TouchableOpacity>
         
         <View style={styles.exampleSection}>
-          <Text style={styles.exampleTitle}>💡 Example barcodes to try:</Text>
-          <TouchableOpacity
-            style={styles.exampleButton}
-            onPress={() => setBarcodeInput('3017620422003')}
-          >
-            <Text style={styles.exampleButtonText}>Try: 3017620422003 (Nutella)</Text>
+          <Text style={styles.exampleTitle}>📋 Try these sample barcodes:</Text>
+          <TouchableOpacity onPress={() => setBarcodeInput('3017620422003')}>
+            <Text style={styles.exampleText}>• 3017620422003 (Nutella)</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.exampleButton}
-            onPress={() => setBarcodeInput('8901030865881')}
-          >
-            <Text style={styles.exampleButtonText}>Try: 8901030865881 (Maggi Noodles)</Text>
+          <TouchableOpacity onPress={() => setBarcodeInput('7622210471499')}>
+            <Text style={styles.exampleText}>• 7622210471499 (Oreo cookies)</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setBarcodeInput('4901777308503')}>
+            <Text style={styles.exampleText}>• 4901777308503 (Sample product)</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -708,7 +542,7 @@ export default function App() {
             </Text>
           </View>
           
-          {analysisResult.flaggedIngredients && analysisResult.flaggedIngredients.length > 0 && (
+          {analysisResult.flaggedIngredients.length > 0 && (
             <View style={styles.flaggedSection}>
               <Text style={styles.flaggedTitle}>🚫 Gluten-containing ingredients:</Text>
               {analysisResult.flaggedIngredients.map((ingredient, index) => (
@@ -717,7 +551,7 @@ export default function App() {
             </View>
           )}
           
-          {analysisResult.ambiguousIngredients && analysisResult.ambiguousIngredients.length > 0 && (
+          {analysisResult.ambiguousIngredients.length > 0 && (
             <View style={styles.flaggedSection}>
               <Text style={styles.cautionTitle}>⚠️ Potentially problematic ingredients:</Text>
               {analysisResult.ambiguousIngredients.map((ingredient, index) => (
@@ -748,11 +582,10 @@ export default function App() {
             <TouchableOpacity
               style={[styles.button, styles.primaryButton]}
               onPress={() => {
-                setScanned(false); // Reset scanned state
                 setCurrentScreen('scanner');
+                setScanned(false);
                 setAnalysisResult(null);
                 setProductData(null);
-                setBarcodeInput('');
               }}
             >
               <Text style={styles.buttonText}>📷 Scan Another</Text>
@@ -766,16 +599,6 @@ export default function App() {
         >
           <Text style={styles.backButtonText}>← Home</Text>
         </TouchableOpacity>
-        
-        {/* Show favorites button if we have favorites and this product can be favorited */}
-        {favorites.length > 0 && (
-          <TouchableOpacity
-            style={[styles.backButton, { right: 20, left: 'auto' }]}
-            onPress={() => setCurrentScreen('favorites')}
-          >
-            <Text style={styles.backButtonText}>⭐ Favorites</Text>
-          </TouchableOpacity>
-        )}
       </SafeAreaView>
     );
   };
@@ -785,80 +608,26 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>⭐ Favorite Products</Text>
-        <Text style={styles.subtitle}>Tap any item to view full analysis</Text>
       </View>
       
       <ScrollView style={styles.favoritesContainer}>
         {favorites.length === 0 ? (
           <Text style={styles.emptyText}>No favorite products yet. Start scanning to add some!</Text>
         ) : (
-          favorites.map((product, index) => {
-            // Analyze the product to get gluten status
-            const analysis = analyzeIngredients(product.ingredients_text);
-            const statusDisplay = getStatusDisplay(analysis.status);
-            
-            return (
+          favorites.map((product, index) => (
+            <View key={index} style={styles.favoriteItem}>
+              <Text style={styles.favoriteProductName}>{product.product_name}</Text>
+              {product.brands && (
+                <Text style={styles.favoriteBrandName}>{product.brands}</Text>
+              )}
               <TouchableOpacity
-                key={index}
-                style={[styles.favoriteItem, { borderLeftColor: statusDisplay.color, borderLeftWidth: 5 }]}
-                onPress={() => {
-                  // Set up the product data and analysis result
-                  setProductData(product);
-                  setAnalysisResult(analysis);
-                  setCurrentScreen('result');
-                }}
+                style={styles.removeFavoriteButton}
+                onPress={() => toggleFavorite(product)}
               >
-                <View style={styles.favoriteItemHeader}>
-                  <View style={styles.favoriteItemInfo}>
-                    <Text style={styles.favoriteProductName}>{product.product_name}</Text>
-                    {product.brands && (
-                      <Text style={styles.favoriteBrandName}>{product.brands}</Text>
-                    )}
-                  </View>
-                  <View style={styles.favoriteStatusContainer}>
-                    <Text style={styles.favoriteStatusIcon}>{statusDisplay.icon}</Text>
-                    <Text style={[styles.favoriteStatusText, { color: statusDisplay.color }]}>
-                      {statusDisplay.text}
-                    </Text>
-                  </View>
-                </View>
-                
-                {/* Show flagged ingredients if any */}
-                {analysis.flaggedIngredients && analysis.flaggedIngredients.length > 0 && (
-                  <View style={styles.favoriteWarning}>
-                    <Text style={styles.favoriteWarningText}>
-                      ⚠️ Contains: {analysis.flaggedIngredients.slice(0, 2).join(', ')}
-                      {analysis.flaggedIngredients.length > 2 ? '...' : ''}
-                    </Text>
-                  </View>
-                )}
-                
-                {/* Show ambiguous ingredients if any and no gluten ingredients */}
-                {analysis.ambiguousIngredients && analysis.ambiguousIngredients.length > 0 && 
-                 (!analysis.flaggedIngredients || analysis.flaggedIngredients.length === 0) && (
-                  <View style={styles.favoriteCaution}>
-                    <Text style={styles.favoriteCautionText}>
-                      ⚠️ May contain: {analysis.ambiguousIngredients.slice(0, 2).join(', ')}
-                      {analysis.ambiguousIngredients.length > 2 ? '...' : ''}
-                    </Text>
-                  </View>
-                )}
-                
-                <View style={styles.favoriteActions}>
-                  <TouchableOpacity
-                    style={styles.removeFavoriteButton}
-                    onPress={(e) => {
-                      e.stopPropagation(); // Prevent triggering the main onPress
-                      toggleFavorite(product);
-                    }}
-                  >
-                    <Text style={styles.removeFavoriteText}>Remove</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.tapHintText}>Tap to view details →</Text>
-                </View>
+                <Text style={styles.removeFavoriteText}>Remove</Text>
               </TouchableOpacity>
-            );
-          })
+            </View>
+          ))
         )}
       </ScrollView>
       
@@ -875,10 +644,8 @@ export default function App() {
   switch (currentScreen) {
     case 'scanner':
       return renderScannerScreen();
-    case 'manualBarcode':
-      return renderManualBarcodeScreen();
-    case 'searchFood':
-      return renderFoodSearchScreen();
+    case 'barcode':
+      return renderBarcodeScreen();
     case 'manual':
       return renderManualScreen();
     case 'result':
@@ -953,9 +720,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'black',
   },
-  scanner: {
-    flex: 1,
-  },
   scannerOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -968,18 +732,6 @@ const styles = StyleSheet.create({
     borderColor: 'white',
     backgroundColor: 'transparent',
   },
-  permissionContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  permissionText: {
-    fontSize: 18,
-    textAlign: 'center',
-    color: '#333',
-    marginBottom: 20,
-  },
   scannerText: {
     color: 'white',
     fontSize: 16,
@@ -989,7 +741,7 @@ const styles = StyleSheet.create({
   },
   backButton: {
     position: 'absolute',
-    top: 50,
+    top: Platform.OS === 'ios' ? 50 : 30,
     left: 20,
     backgroundColor: 'rgba(0,0,0,0.5)',
     paddingHorizontal: 15,
@@ -1020,17 +772,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     textAlignVertical: 'top',
     marginBottom: 20,
-  },
-  barcodeInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 15,
-    fontSize: 18,
-    backgroundColor: 'white',
-    textAlign: 'center',
-    marginBottom: 20,
-    fontFamily: 'monospace',
   },
   resultContainer: {
     flex: 1,
@@ -1124,44 +865,6 @@ const styles = StyleSheet.create({
     color: '#666',
     textAlign: 'center',
   },
-  loadingContainer: {
-    alignItems: 'center',
-    marginVertical: 20,
-  },
-  searchResultsContainer: {
-    maxHeight: 300,
-    marginTop: 15,
-  },
-  resultsTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
-  },
-  searchResultItem: {
-    backgroundColor: 'white',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  searchResultName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 5,
-  },
-  searchResultBrand: {
-    fontSize: 14,
-    color: '#666',
-    marginBottom: 8,
-  },
-  searchResultPreview: {
-    fontSize: 12,
-    color: '#888',
-    lineHeight: 16,
-  },
   errorText: {
     fontSize: 18,
     color: '#F44336',
@@ -1177,70 +880,6 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 8,
     marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  favoriteItemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  favoriteItemInfo: {
-    flex: 1,
-    marginRight: 10,
-  },
-  favoriteStatusContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    minWidth: 60,
-  },
-  favoriteStatusIcon: {
-    fontSize: 24,
-    marginBottom: 2,
-  },
-  favoriteStatusText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
-  favoriteWarning: {
-    backgroundColor: '#ffebee',
-    padding: 8,
-    borderRadius: 6,
-    marginBottom: 8,
-  },
-  favoriteWarningText: {
-    fontSize: 12,
-    color: '#c62828',
-    fontWeight: '500',
-  },
-  favoriteCaution: {
-    backgroundColor: '#fff3e0',
-    padding: 8,
-    borderRadius: 6,
-    marginBottom: 8,
-  },
-  favoriteCautionText: {
-    fontSize: 12,
-    color: '#ef6c00',
-    fontWeight: '500',
-  },
-  favoriteActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 5,
-  },
-  tapHintText: {
-    fontSize: 12,
-    color: '#2196F3',
-    fontStyle: 'italic',
   },
   favoriteProductName: {
     fontSize: 16,
@@ -1318,39 +957,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginBottom: 4,
-  },
-  exampleButton: {
-    backgroundColor: '#4CAF50',
-    padding: 12,
-    borderRadius: 8,
-    marginVertical: 4,
-  },
-  exampleButtonText: {
-    color: 'white',
-    textAlign: 'center',
-    fontWeight: 'bold',
-    fontSize: 14,
-  },
-  scanner: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: '100%',
-  },
-  scannerFrame: {
-    width: 250,
-    height: 250,
-    borderWidth: 2,
-    borderColor: 'white',
-    backgroundColor: 'transparent',
-  },
-  scannerOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });

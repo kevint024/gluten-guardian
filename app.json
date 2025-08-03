@@ -34,7 +34,7 @@
     },
     "plugins": [
       [
-        "expo-barcode-scanner",
+        "expo-camera",
         {
           "cameraPermission": "Allow Gluten Guardian to access camera to scan barcodes on food products."
         }
