@@ -38,6 +38,8 @@ export default function App() {
   const [currentScreen, setCurrentScreen] = useState('home');
   const [manualIngredients, setManualIngredients] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
+  const [foodSearchInput, setFoodSearchInput] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [productData, setProductData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -233,6 +235,63 @@ export default function App() {
     setCurrentScreen('result');
   };
 
+  // Search for food products by name
+  const searchFoodProducts = async (searchTerm) => {
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      Alert.alert('Error', 'Please enter at least 2 characters to search.');
+      return;
+    }
+
+    setLoading(true);
+    setSearchResults([]);
+
+    try {
+      const response = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(searchTerm)}&json=true&page_size=10&fields=code,product_name,brands,ingredients_text`);
+      const data = await response.json();
+      
+      if (data.products && data.products.length > 0) {
+        // Filter out products without ingredients
+        const productsWithIngredients = data.products.filter(product => 
+          product.ingredients_text && product.ingredients_text.trim().length > 0
+        );
+        setSearchResults(productsWithIngredients.slice(0, 8)); // Limit to 8 results
+      } else {
+        setSearchResults([]);
+        Alert.alert('No Results', 'No products found with that name. Try a different search term.');
+      }
+    } catch (error) {
+      console.error('Error searching products:', error);
+      Alert.alert('Error', 'Failed to search for products. Please check your internet connection.');
+      setSearchResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle selecting a product from search results
+  const handleProductSelection = (product) => {
+    const productData = {
+      product_name: product.product_name || 'Unknown Product',
+      ingredients_text: product.ingredients_text || '',
+      brands: product.brands || '',
+      barcode: product.code
+    };
+    
+    setProductData(productData);
+    
+    // Analyze ingredients
+    const result = analyzeIngredients(productData.ingredients_text);
+    setAnalysisResult(result);
+    
+    // Cache the product data if it has a barcode
+    if (product.code) {
+      const newCache = { ...cache, [product.code]: productData };
+      saveCache(newCache);
+    }
+    
+    setCurrentScreen('result');
+  };
+
   // Add/remove product from favorites
   const toggleFavorite = (product) => {
     if (!product || !product.barcode) return;
@@ -284,6 +343,20 @@ export default function App() {
           }}
         >
           <Text style={styles.buttonText}>📷 Scan Barcode</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.button, styles.secondaryButton]}
+          onPress={() => setCurrentScreen('manualBarcode')}
+        >
+          <Text style={[styles.buttonText, styles.secondaryButtonText]}>🔢 Enter Barcode</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.button, styles.secondaryButton]}
+          onPress={() => setCurrentScreen('searchFood')}
+        >
+          <Text style={[styles.buttonText, styles.secondaryButtonText]}>🔍 Search Food</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
@@ -407,6 +480,148 @@ export default function App() {
     fetchProductData(data);
     setCurrentScreen('result');
   };
+
+  // Food Search Screen
+  const renderFoodSearchScreen = () => (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Search Food Products</Text>
+        <Text style={styles.subtitle}>Enter a food name to find products</Text>
+      </View>
+      
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Enter food name:</Text>
+        <TextInput
+          style={styles.barcodeInput}
+          placeholder="Enter food name (e.g., Doritos, Nutella, Cheerios)"
+          value={foodSearchInput}
+          onChangeText={setFoodSearchInput}
+          autoCapitalize="words"
+          onSubmitEditing={() => searchFoodProducts(foodSearchInput)}
+        />
+        
+        <TouchableOpacity
+          style={[styles.button, styles.primaryButton]}
+          onPress={() => searchFoodProducts(foodSearchInput)}
+          disabled={loading}
+        >
+          <Text style={styles.buttonText}>
+            {loading ? '🔍 Searching...' : '🔍 Search Products'}
+          </Text>
+        </TouchableOpacity>
+        
+        {loading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#2196F3" />
+            <Text style={styles.loadingText}>Searching for products...</Text>
+          </View>
+        )}
+        
+        {searchResults.length > 0 && (
+          <ScrollView style={styles.searchResultsContainer}>
+            <Text style={styles.resultsTitle}>Found {searchResults.length} products:</Text>
+            {searchResults.map((product, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.searchResultItem}
+                onPress={() => handleProductSelection(product)}
+              >
+                <Text style={styles.searchResultName}>{product.product_name}</Text>
+                {product.brands && (
+                  <Text style={styles.searchResultBrand}>{product.brands}</Text>
+                )}
+                <Text style={styles.searchResultPreview}>
+                  {product.ingredients_text.substring(0, 100)}
+                  {product.ingredients_text.length > 100 ? '...' : ''}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
+        
+        <View style={styles.exampleSection}>
+          <Text style={styles.exampleTitle}>💡 Example searches to try:</Text>
+          <TouchableOpacity
+            style={styles.exampleButton}
+            onPress={() => {
+              setFoodSearchInput('Doritos');
+              searchFoodProducts('Doritos');
+            }}
+          >
+            <Text style={styles.exampleButtonText}>Try: Doritos</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.exampleButton}
+            onPress={() => {
+              setFoodSearchInput('Cheerios');
+              searchFoodProducts('Cheerios');
+            }}
+          >
+            <Text style={styles.exampleButtonText}>Try: Cheerios</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => setCurrentScreen('home')}
+      >
+        <Text style={styles.backButtonText}>← Back</Text>
+      </TouchableOpacity>
+    </SafeAreaView>
+  );
+
+  // Manual Barcode Entry Screen
+  const renderManualBarcodeScreen = () => (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Manual Barcode Entry</Text>
+        <Text style={styles.subtitle}>Enter a product barcode to look up</Text>
+      </View>
+      
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Enter barcode:</Text>
+        <TextInput
+          style={styles.barcodeInput}
+          placeholder="Enter barcode number (e.g., 123456789012)"
+          value={barcodeInput}
+          onChangeText={setBarcodeInput}
+          keyboardType="numeric"
+          maxLength={20}
+        />
+        
+        <TouchableOpacity
+          style={[styles.button, styles.primaryButton]}
+          onPress={handleBarcodeAnalysis}
+        >
+          <Text style={styles.buttonText}>🔍 Look Up Product</Text>
+        </TouchableOpacity>
+        
+        <View style={styles.exampleSection}>
+          <Text style={styles.exampleTitle}>💡 Example barcodes to try:</Text>
+          <TouchableOpacity
+            style={styles.exampleButton}
+            onPress={() => setBarcodeInput('3017620422003')}
+          >
+            <Text style={styles.exampleButtonText}>Try: 3017620422003 (Nutella)</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.exampleButton}
+            onPress={() => setBarcodeInput('8901030865881')}
+          >
+            <Text style={styles.exampleButtonText}>Try: 8901030865881 (Maggi Noodles)</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => setCurrentScreen('home')}
+      >
+        <Text style={styles.backButtonText}>← Back</Text>
+      </TouchableOpacity>
+    </SafeAreaView>
+  );
 
   // Manual Input Screen
   const renderManualScreen = () => (
@@ -591,6 +806,10 @@ export default function App() {
   switch (currentScreen) {
     case 'scanner':
       return renderScannerScreen();
+    case 'manualBarcode':
+      return renderManualBarcodeScreen();
+    case 'searchFood':
+      return renderFoodSearchScreen();
     case 'manual':
       return renderManualScreen();
     case 'result':
@@ -733,6 +952,17 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
     marginBottom: 20,
   },
+  barcodeInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 15,
+    fontSize: 18,
+    backgroundColor: 'white',
+    textAlign: 'center',
+    marginBottom: 20,
+    fontFamily: 'monospace',
+  },
   resultContainer: {
     flex: 1,
     paddingHorizontal: 20,
@@ -824,6 +1054,44 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     textAlign: 'center',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  searchResultsContainer: {
+    maxHeight: 300,
+    marginTop: 15,
+  },
+  resultsTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+  },
+  searchResultItem: {
+    backgroundColor: 'white',
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  searchResultName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 5,
+  },
+  searchResultBrand: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  searchResultPreview: {
+    fontSize: 12,
+    color: '#888',
+    lineHeight: 16,
   },
   errorText: {
     fontSize: 18,
@@ -917,6 +1185,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginBottom: 4,
+  },
+  exampleButton: {
+    backgroundColor: '#4CAF50',
+    padding: 12,
+    borderRadius: 8,
+    marginVertical: 4,
+  },
+  exampleButtonText: {
+    color: 'white',
+    textAlign: 'center',
+    fontWeight: 'bold',
+    fontSize: 14,
   },
   scanner: {
     flex: 1,
