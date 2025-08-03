@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { BarCodeScanner } from 'expo-barcode-scanner';
+import { CameraView, Camera } from 'expo-camera';
 
 // List of gluten-containing ingredients
 const GLUTEN_INGREDIENTS = [
@@ -98,8 +98,9 @@ export default function AppCamera() {
   };
 
   // Get barcode scanner permissions
-  const getBarCodeScannerPermissions = async () => {
-    const { status } = await BarCodeScanner.requestPermissionsAsync();
+  // Get camera permissions
+  const getCameraPermissions = async () => {
+    const { status } = await Camera.requestCameraPermissionsAsync();
     setHasPermission(status === 'granted');
   };
 
@@ -300,7 +301,7 @@ export default function AppCamera() {
           style={[styles.button, styles.primaryButton]}
           onPress={() => {
             if (hasPermission === null) {
-              getBarCodeScannerPermissions();
+              getCameraPermissions();
             }
             setCurrentScreen('scanner');
           }}
@@ -372,7 +373,7 @@ export default function AppCamera() {
           <Text style={styles.errorText}>No access to camera</Text>
           <TouchableOpacity
             style={styles.button}
-            onPress={getBarCodeScannerPermissions}
+            onPress={getCameraPermissions}
           >
             <Text style={styles.buttonText}>Grant Permission</Text>
           </TouchableOpacity>
@@ -382,9 +383,12 @@ export default function AppCamera() {
 
     return (
       <View style={styles.scannerContainer}>
-        <BarCodeScanner
-          onBarCodeScanned={scanned ? undefined : handleBarCodeScanned}
+        <CameraView
           style={StyleSheet.absoluteFillObject}
+          barcodeScannerSettings={{
+            barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'],
+          }}
+          onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
         />
         <View style={styles.scannerOverlay}>
           <View style={styles.scannerFrame} />

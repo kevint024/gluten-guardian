@@ -9,9 +9,11 @@ import {
   ScrollView,
   SafeAreaView,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CameraView, Camera } from 'expo-camera';
 
 // List of gluten-containing ingredients
 const GLUTEN_INGREDIENTS = [
@@ -41,11 +43,20 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [favorites, setFavorites] = useState([]);
   const [cache, setCache] = useState({});
+  // Camera-specific states
+  const [hasPermission, setHasPermission] = useState(null);
+  const [scanned, setScanned] = useState(false);
 
   useEffect(() => {
     loadFavorites();
     loadCache();
   }, []);
+
+  // Get camera permissions
+  const getCameraPermissions = async () => {
+    const { status } = await Camera.requestCameraPermissionsAsync();
+    setHasPermission(status === 'granted');
+  };
 
   // Load favorites from AsyncStorage
   const loadFavorites = async () => {
@@ -257,15 +268,21 @@ export default function App() {
       <View style={styles.header}>
         <Text style={styles.title}>🛡️ Gluten Guardian</Text>
         <Text style={styles.subtitle}>Your gluten-free companion</Text>
-        <Text style={styles.note}>📱 Simplified Version - Enter barcodes manually</Text>
+        <Text style={styles.note}>📱 Camera-Enabled Version - Scan barcodes or enter manually</Text>
       </View>
       
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={[styles.button, styles.primaryButton]}
-          onPress={() => setCurrentScreen('barcode')}
+          onPress={() => {
+            if (hasPermission === null) {
+              getCameraPermissions();
+            }
+            setScanned(false); // Reset scanned state
+            setCurrentScreen('scanner');
+          }}
         >
-          <Text style={styles.buttonText}>� Enter Barcode</Text>
+          <Text style={styles.buttonText}>📷 Scan Barcode</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
@@ -309,53 +326,80 @@ export default function App() {
     </SafeAreaView>
   );
 
-  // Barcode Input Screen
-  const renderBarcodeScreen = () => (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Enter Barcode</Text>
-        <Text style={styles.subtitle}>Type a product barcode to analyze</Text>
-      </View>
-      
-      <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Enter barcode number:</Text>
-        <TextInput
-          style={styles.textInput}
-          placeholder="e.g. 3017620422003"
-          value={barcodeInput}
-          onChangeText={setBarcodeInput}
-          keyboardType="numeric"
-        />
+  // Barcode Scanner Screen
+  const renderScannerScreen = () => {
+    if (hasPermission === null) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <View style={styles.permissionContainer}>
+            <Text style={styles.permissionText}>Camera permission required</Text>
+            <TouchableOpacity style={styles.button} onPress={getCameraPermissions}>
+              <Text style={styles.buttonText}>Grant Camera Permission</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, styles.secondaryButton]}
+              onPress={() => setCurrentScreen('home')}
+            >
+              <Text style={styles.buttonText}>Back to Home</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      );
+    }
+    if (hasPermission === false) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <View style={styles.permissionContainer}>
+            <Text style={styles.permissionText}>Camera access denied. Please enable camera permissions in settings.</Text>
+            <TouchableOpacity
+              style={[styles.button, styles.secondaryButton]}
+              onPress={() => setCurrentScreen('home')}
+            >
+              <Text style={styles.buttonText}>Back to Home</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      );
+    }
+
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Scan Product Barcode</Text>
+          <Text style={styles.subtitle}>Align the barcode within the frame to scan</Text>
+        </View>
+        
+        <View style={styles.scannerContainer}>
+          <CameraView
+            style={styles.scanner}
+            barcodeScannerSettings={{
+              barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'],
+            }}
+            onBarcodeScanned={scanned ? undefined : handleBarCodeScanned}
+          >
+            <View style={styles.scannerOverlay}>
+              <View style={styles.scannerFrame} />
+            </View>
+          </CameraView>
+        </View>
         
         <TouchableOpacity
-          style={[styles.button, styles.primaryButton]}
-          onPress={handleBarcodeAnalysis}
+          style={styles.backButton}
+          onPress={() => setCurrentScreen('home')}
         >
-          <Text style={styles.buttonText}>🔍 Look Up Product</Text>
+          <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
-        
-        <View style={styles.exampleSection}>
-          <Text style={styles.exampleTitle}>📋 Try these sample barcodes:</Text>
-          <TouchableOpacity onPress={() => setBarcodeInput('3017620422003')}>
-            <Text style={styles.exampleText}>• 3017620422003 (Nutella)</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setBarcodeInput('7622210471499')}>
-            <Text style={styles.exampleText}>• 7622210471499 (Oreo cookies)</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => setBarcodeInput('4901777308503')}>
-            <Text style={styles.exampleText}>• 4901777308503 (Sample product)</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-      
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={() => setCurrentScreen('home')}
-      >
-        <Text style={styles.backButtonText}>← Back</Text>
-      </TouchableOpacity>
-    </SafeAreaView>
-  );
+      </SafeAreaView>
+    );
+  };
+
+  // Handle barcode scanned from camera
+  const handleBarCodeScanned = ({ data }) => {
+    setScanned(true);
+    setBarcodeInput(data);
+    fetchProductData(data);
+    setCurrentScreen('result');
+  };
 
   // Manual Input Screen
   const renderManualScreen = () => (
@@ -477,13 +521,14 @@ export default function App() {
             <TouchableOpacity
               style={[styles.button, styles.primaryButton]}
               onPress={() => {
-                setCurrentScreen('barcode');
+                setScanned(false); // Reset scanned state
+                setCurrentScreen('scanner');
                 setAnalysisResult(null);
                 setProductData(null);
                 setBarcodeInput('');
               }}
             >
-              <Text style={styles.buttonText}>� Check Another</Text>
+              <Text style={styles.buttonText}>📷 Scan Another</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -537,8 +582,8 @@ export default function App() {
 
   // Main render function
   switch (currentScreen) {
-    case 'barcode':
-      return renderBarcodeScreen();
+    case 'scanner':
+      return renderScannerScreen();
     case 'manual':
       return renderManualScreen();
     case 'result':
@@ -613,6 +658,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'black',
   },
+  scanner: {
+    flex: 1,
+  },
   scannerOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -624,6 +672,18 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'white',
     backgroundColor: 'transparent',
+  },
+  permissionContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  permissionText: {
+    fontSize: 18,
+    textAlign: 'center',
+    color: '#333',
+    marginBottom: 20,
   },
   scannerText: {
     color: 'white',
@@ -850,5 +910,27 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginBottom: 4,
+  },
+  scanner: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+  },
+  scannerFrame: {
+    width: 250,
+    height: 250,
+    borderWidth: 2,
+    borderColor: 'white',
+    backgroundColor: 'transparent',
+  },
+  scannerOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
