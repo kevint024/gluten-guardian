@@ -34,11 +34,79 @@ const AMBIGUOUS_INGREDIENTS = [
   'food starch', 'starch', 'mono and diglycerides', 'lecithin'
 ];
 
+// Common dishes and their typical ingredients for gluten analysis
+const DISH_DATABASE = {
+  // Italian Dishes
+  'pasta': { ingredients: 'wheat flour, durum wheat semolina, eggs', status: 'unsafe', description: 'Traditional pasta is made with wheat flour' },
+  'pizza': { ingredients: 'wheat flour, yeast, cheese, tomato sauce', status: 'unsafe', description: 'Pizza dough contains wheat flour' },
+  'lasagna': { ingredients: 'wheat pasta, cheese, meat, tomato sauce, wheat flour', status: 'unsafe', description: 'Contains wheat pasta and often wheat flour in sauce' },
+  'spaghetti': { ingredients: 'wheat flour, durum wheat semolina', status: 'unsafe', description: 'Made with wheat flour' },
+  'ravioli': { ingredients: 'wheat flour, eggs, cheese, filling', status: 'unsafe', description: 'Pasta wrapper contains wheat flour' },
+  'risotto': { ingredients: 'arborio rice, broth, cheese, wine', status: 'caution', description: 'Rice-based but broth may contain gluten' },
+  
+  // Asian Dishes
+  'ramen': { ingredients: 'wheat noodles, broth, soy sauce, miso', status: 'unsafe', description: 'Noodles contain wheat, soy sauce often contains wheat' },
+  'udon': { ingredients: 'wheat flour, salt, water', status: 'unsafe', description: 'Thick wheat noodles' },
+  'lo mein': { ingredients: 'wheat noodles, vegetables, soy sauce', status: 'unsafe', description: 'Wheat noodles and soy sauce contain gluten' },
+  'pad thai': { ingredients: 'rice noodles, tamarind, fish sauce, peanuts', status: 'caution', description: 'Rice noodles are safe but sauces may contain gluten' },
+  'pho': { ingredients: 'rice noodles, beef broth, herbs, spices', status: 'caution', description: 'Rice noodles are safe but broth may contain gluten' },
+  'fried rice': { ingredients: 'rice, soy sauce, eggs, vegetables', status: 'caution', description: 'Rice is safe but soy sauce often contains wheat' },
+  'sushi': { ingredients: 'rice, fish, nori, wasabi, soy sauce', status: 'caution', description: 'Rice and fish are safe but soy sauce contains wheat' },
+  'tempura': { ingredients: 'wheat flour, seafood, vegetables, oil', status: 'unsafe', description: 'Batter made with wheat flour' },
+  'teriyaki': { ingredients: 'meat, teriyaki sauce, soy sauce', status: 'unsafe', description: 'Teriyaki sauce typically contains soy sauce with wheat' },
+  
+  // Mexican Dishes
+  'tacos': { ingredients: 'corn tortillas, meat, vegetables, cheese', status: 'safe', description: 'Corn tortillas are naturally gluten-free' },
+  'burritos': { ingredients: 'wheat flour tortillas, beans, rice, meat', status: 'unsafe', description: 'Flour tortillas contain wheat' },
+  'quesadillas': { ingredients: 'wheat flour tortillas, cheese', status: 'unsafe', description: 'Flour tortillas contain wheat' },
+  'enchiladas': { ingredients: 'corn tortillas, sauce, cheese, meat', status: 'caution', description: 'Corn tortillas are safe but sauce may contain flour' },
+  'nachos': { ingredients: 'corn chips, cheese, jalapeños', status: 'safe', description: 'Corn chips are naturally gluten-free' },
+  'tamales': { ingredients: 'corn masa, meat, vegetables', status: 'safe', description: 'Made with corn masa, naturally gluten-free' },
+  
+  // Indian Dishes
+  'naan': { ingredients: 'wheat flour, yogurt, yeast', status: 'unsafe', description: 'Bread made with wheat flour' },
+  'chapati': { ingredients: 'wheat flour, water, salt', status: 'unsafe', description: 'Flatbread made with wheat flour' },
+  'roti': { ingredients: 'wheat flour, water', status: 'unsafe', description: 'Flatbread made with wheat flour' },
+  'curry': { ingredients: 'spices, vegetables, meat, coconut milk', status: 'caution', description: 'Usually safe but some thickeners may contain gluten' },
+  'biryani': { ingredients: 'basmati rice, spices, meat, yogurt', status: 'safe', description: 'Rice-based dish, naturally gluten-free' },
+  'dal': { ingredients: 'lentils, spices, turmeric', status: 'safe', description: 'Lentil-based, naturally gluten-free' },
+  
+  // American/Western Dishes
+  'burger': { ingredients: 'wheat flour bun, meat, vegetables', status: 'unsafe', description: 'Bun contains wheat flour' },
+  'sandwich': { ingredients: 'wheat bread, filling', status: 'unsafe', description: 'Bread contains wheat flour' },
+  'fried chicken': { ingredients: 'chicken, wheat flour, spices', status: 'unsafe', description: 'Breading contains wheat flour' },
+  'fish and chips': { ingredients: 'fish, wheat flour batter, potatoes', status: 'unsafe', description: 'Batter contains wheat flour' },
+  'pancakes': { ingredients: 'wheat flour, eggs, milk, baking powder', status: 'unsafe', description: 'Made with wheat flour' },
+  'waffles': { ingredients: 'wheat flour, eggs, milk, sugar', status: 'unsafe', description: 'Made with wheat flour' },
+  'french toast': { ingredients: 'wheat bread, eggs, milk', status: 'unsafe', description: 'Made with wheat bread' },
+  'mac and cheese': { ingredients: 'wheat pasta, cheese, milk', status: 'unsafe', description: 'Pasta contains wheat' },
+  
+  // Soups
+  'chicken noodle soup': { ingredients: 'wheat noodles, chicken, vegetables, broth', status: 'unsafe', description: 'Noodles contain wheat' },
+  'clam chowder': { ingredients: 'clams, cream, potatoes, wheat flour', status: 'unsafe', description: 'Often thickened with wheat flour' },
+  'french onion soup': { ingredients: 'onions, broth, cheese, wheat bread', status: 'unsafe', description: 'Served with wheat bread croutons' },
+  'miso soup': { ingredients: 'miso paste, tofu, seaweed', status: 'caution', description: 'Miso may contain wheat or barley' },
+  
+  // Desserts
+  'cake': { ingredients: 'wheat flour, sugar, eggs, butter', status: 'unsafe', description: 'Made with wheat flour' },
+  'cookies': { ingredients: 'wheat flour, sugar, butter', status: 'unsafe', description: 'Made with wheat flour' },
+  'pie': { ingredients: 'wheat flour crust, filling', status: 'unsafe', description: 'Crust contains wheat flour' },
+  'bread pudding': { ingredients: 'wheat bread, eggs, milk, sugar', status: 'unsafe', description: 'Made with wheat bread' },
+  'donuts': { ingredients: 'wheat flour, sugar, oil', status: 'unsafe', description: 'Made with wheat flour' },
+  'muffins': { ingredients: 'wheat flour, sugar, eggs, milk', status: 'unsafe', description: 'Made with wheat flour' },
+  
+  // Salads (generally safe)
+  'caesar salad': { ingredients: 'lettuce, parmesan, dressing', status: 'caution', description: 'Salad is safe but croutons contain wheat' },
+  'greek salad': { ingredients: 'lettuce, tomatoes, olives, feta cheese', status: 'safe', description: 'Naturally gluten-free ingredients' },
+  'cobb salad': { ingredients: 'lettuce, chicken, bacon, eggs, cheese', status: 'safe', description: 'Naturally gluten-free ingredients' },
+};
+
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState('home');
   const [manualIngredients, setManualIngredients] = useState('');
   const [barcodeInput, setBarcodeInput] = useState('');
   const [foodSearchInput, setFoodSearchInput] = useState('');
+  const [dishSearchInput, setDishSearchInput] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [productData, setProductData] = useState(null);
@@ -268,6 +336,110 @@ export default function App() {
     }
   };
 
+  // Search for dishes/recipes using TheMealDB API
+  const searchDishes = async (searchTerm) => {
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      Alert.alert('Error', 'Please enter at least 2 characters to search.');
+      return;
+    }
+
+    setLoading(true);
+    setSearchResults([]);
+
+    try {
+      // First try TheMealDB API for recipe search
+      const response = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(searchTerm)}`);
+      const data = await response.json();
+      
+      let searchResults = [];
+
+      if (data.meals && data.meals.length > 0) {
+        // Process TheMealDB results
+        searchResults = data.meals.slice(0, 6).map(meal => {
+          // Extract ingredients from the meal object
+          const ingredients = [];
+          for (let i = 1; i <= 20; i++) {
+            const ingredient = meal[`strIngredient${i}`];
+            if (ingredient && ingredient.trim()) {
+              ingredients.push(ingredient.trim().toLowerCase());
+            }
+          }
+          
+          const ingredientsText = ingredients.join(', ');
+          const analysis = analyzeIngredients(ingredientsText);
+          
+          return {
+            name: meal.strMeal,
+            ingredients: ingredientsText,
+            instructions: meal.strInstructions,
+            category: meal.strCategory,
+            area: meal.strArea,
+            image: meal.strMealThumb,
+            status: analysis.status,
+            description: `${meal.strCategory} dish from ${meal.strArea}`,
+            source: 'TheMealDB',
+            analysis: analysis
+          };
+        });
+      }
+
+      // If no results from TheMealDB, fall back to our static database
+      if (searchResults.length === 0) {
+        const lowerSearchTerm = searchTerm.toLowerCase().trim();
+        const matchingDishes = [];
+
+        // Search through dish database
+        Object.keys(DISH_DATABASE).forEach(dishName => {
+          if (dishName.includes(lowerSearchTerm) || lowerSearchTerm.includes(dishName)) {
+            const dish = DISH_DATABASE[dishName];
+            matchingDishes.push({
+              name: dishName.charAt(0).toUpperCase() + dishName.slice(1),
+              ...dish,
+              source: 'Local Database'
+            });
+          }
+        });
+
+        // Also search for partial matches in static database
+        if (matchingDishes.length < 5) {
+          Object.keys(DISH_DATABASE).forEach(dishName => {
+            const words = lowerSearchTerm.split(' ');
+            const dishWords = dishName.split(' ');
+            
+            const hasPartialMatch = words.some(word => 
+              dishWords.some(dishWord => 
+                dishWord.includes(word) || word.includes(dishWord)
+              )
+            );
+
+            if (hasPartialMatch && !matchingDishes.some(dish => dish.name.toLowerCase() === dishName)) {
+              const dish = DISH_DATABASE[dishName];
+              matchingDishes.push({
+                name: dishName.charAt(0).toUpperCase() + dishName.slice(1),
+                ...dish,
+                source: 'Local Database'
+              });
+            }
+          });
+        }
+
+        searchResults = matchingDishes;
+      }
+
+      setSearchResults(searchResults.slice(0, 8)); // Limit to 8 results
+      
+      if (searchResults.length === 0) {
+        Alert.alert('No Results', 'No dishes found with that name. Try searching for common dishes like "chicken", "pasta", "soup", etc.');
+      }
+    } catch (error) {
+      console.error('Error searching dishes:', error);
+      Alert.alert('Error', 'Failed to search for dishes. Please check your internet connection.');
+      setSearchResults([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Handle selecting a product from search results
   const handleProductSelection = (product) => {
     const productData = {
@@ -292,15 +464,81 @@ export default function App() {
     setCurrentScreen('result');
   };
 
+  // Handle selecting a dish from search results
+  const handleDishSelection = (dish) => {
+    const productData = {
+      product_name: dish.name,
+      ingredients_text: dish.ingredients,
+      brands: dish.source === 'TheMealDB' ? `${dish.category} - ${dish.area}` : 'General Recipe',
+      barcode: null,
+      isDish: true,
+      dishDescription: dish.description,
+      dishCategory: dish.category,
+      dishArea: dish.area,
+      dishImage: dish.image,
+      dishSource: dish.source
+    };
+    
+    setProductData(productData);
+    
+    // Use the analysis from API search if available, otherwise create new analysis
+    let analysisResult;
+    if (dish.analysis) {
+      analysisResult = dish.analysis;
+    } else if (dish.status === 'safe') {
+      analysisResult = {
+        status: 'safe',
+        message: dish.description,
+        flaggedIngredients: [],
+        ambiguousIngredients: []
+      };
+    } else if (dish.status === 'caution') {
+      analysisResult = {
+        status: 'caution',
+        message: dish.description,
+        flaggedIngredients: [],
+        ambiguousIngredients: ['Check sauce ingredients', 'Verify preparation method']
+      };
+    } else {
+      // Extract gluten ingredients for unsafe dishes
+      const flaggedGluten = [];
+      const lowerIngredients = dish.ingredients.toLowerCase();
+      GLUTEN_INGREDIENTS.forEach(ingredient => {
+        if (lowerIngredients.includes(ingredient.toLowerCase())) {
+          flaggedGluten.push(ingredient);
+        }
+      });
+      
+      analysisResult = {
+        status: 'unsafe',
+        message: dish.description,
+        flaggedIngredients: flaggedGluten,
+        ambiguousIngredients: []
+      };
+    }
+    
+    setAnalysisResult(analysisResult);
+    setCurrentScreen('result');
+  };
+
   // Add/remove product from favorites
   const toggleFavorite = (product) => {
-    if (!product || !product.barcode) return;
+    if (!product) return;
     
-    const isFavorite = favorites.some(fav => fav.barcode === product.barcode);
+    // For dishes, use the dish name as identifier; for products, use barcode
+    const identifier = product.isDish ? product.product_name : product.barcode;
+    if (!identifier) return;
+    
+    const isFavorite = favorites.some(fav => 
+      fav.isDish ? fav.product_name === identifier : fav.barcode === identifier
+    );
+    
     let newFavorites;
     
     if (isFavorite) {
-      newFavorites = favorites.filter(fav => fav.barcode !== product.barcode);
+      newFavorites = favorites.filter(fav => 
+        fav.isDish ? fav.product_name !== identifier : fav.barcode !== identifier
+      );
     } else {
       // Add timestamp when adding to favorites
       const favoriteProduct = {
@@ -361,7 +599,14 @@ export default function App() {
           style={[styles.button, styles.secondaryButton]}
           onPress={() => setCurrentScreen('searchFood')}
         >
-          <Text style={[styles.buttonText, styles.secondaryButtonText]}>🔍 Search Food</Text>
+          <Text style={[styles.buttonText, styles.secondaryButtonText]}>🔍 Search Food Products</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.button, styles.secondaryButton]}
+          onPress={() => setCurrentScreen('searchDish')}
+        >
+          <Text style={[styles.buttonText, styles.secondaryButtonText]}>🍽️ Search Dishes</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
@@ -491,14 +736,14 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Search Food Products</Text>
-        <Text style={styles.subtitle}>Enter a food name to find products</Text>
+        <Text style={styles.subtitle}>Enter a food product name to find packaged items</Text>
       </View>
       
       <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Enter food name:</Text>
+        <Text style={styles.inputLabel}>Enter product name:</Text>
         <TextInput
           style={styles.barcodeInput}
-          placeholder="Enter food name (e.g., Doritos, Nutella, Cheerios)"
+          placeholder="Enter product name (e.g., Doritos, Nutella, Cheerios)"
           value={foodSearchInput}
           onChangeText={setFoodSearchInput}
           autoCapitalize="words"
@@ -545,7 +790,7 @@ export default function App() {
         )}
         
         <View style={styles.exampleSection}>
-          <Text style={styles.exampleTitle}>💡 Example searches to try:</Text>
+          <Text style={styles.exampleTitle}>💡 Example product searches to try:</Text>
           <TouchableOpacity
             style={styles.exampleButton}
             onPress={() => {
@@ -563,6 +808,127 @@ export default function App() {
             }}
           >
             <Text style={styles.exampleButtonText}>Try: Cheerios</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => setCurrentScreen('home')}
+      >
+        <Text style={styles.backButtonText}>← Back</Text>
+      </TouchableOpacity>
+    </SafeAreaView>
+  );
+
+  // Dish Search Screen
+  const renderDishSearchScreen = () => (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>Search Dishes & Recipes</Text>
+        <Text style={styles.subtitle}>Enter a dish name to check for gluten</Text>
+      </View>
+      
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Enter dish name:</Text>
+        <TextInput
+          style={styles.barcodeInput}
+          placeholder="Enter dish name (e.g., pasta, pizza, tacos, curry)"
+          value={dishSearchInput}
+          onChangeText={setDishSearchInput}
+          autoCapitalize="words"
+          onSubmitEditing={() => searchDishes(dishSearchInput)}
+        />
+        
+        <TouchableOpacity
+          style={[styles.button, styles.primaryButton]}
+          onPress={() => searchDishes(dishSearchInput)}
+          disabled={loading}
+        >
+          <Text style={styles.buttonText}>
+            {loading ? '🔍 Searching...' : '🔍 Search Dishes'}
+          </Text>
+        </TouchableOpacity>
+        
+        {loading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#2196F3" />
+            <Text style={styles.loadingText}>Searching for dish recipes...</Text>
+          </View>
+        )}
+        
+        {searchResults.length > 0 && (
+          <ScrollView style={styles.searchResultsContainer}>
+            <Text style={styles.resultsTitle}>Found {searchResults.length} dishes:</Text>
+            {searchResults.map((dish, index) => {
+              const statusDisplay = getStatusDisplay(dish.status);
+              return (
+                <TouchableOpacity
+                  key={index}
+                  style={[styles.searchResultItem, styles.dishResultItem]}
+                  onPress={() => handleDishSelection(dish)}
+                >
+                  <View style={styles.dishResultHeader}>
+                    <View style={styles.dishResultInfo}>
+                      <Text style={styles.searchResultName}>{dish.name}</Text>
+                      {dish.source && (
+                        <Text style={styles.dishSourceText}>
+                          📡 {dish.source}
+                          {dish.category && dish.area && ` • ${dish.category} • ${dish.area}`}
+                        </Text>
+                      )}
+                    </View>
+                    <View style={styles.dishStatusContainer}>
+                      <Text style={styles.dishStatusIcon}>{statusDisplay.icon}</Text>
+                      <Text style={[styles.dishStatusText, { color: statusDisplay.color }]}>
+                        {statusDisplay.text}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.dishDescription}>{dish.description}</Text>
+                  <Text style={styles.searchResultPreview}>
+                    Ingredients: {dish.ingredients.length > 100 ? 
+                      dish.ingredients.substring(0, 100) + '...' : 
+                      dish.ingredients}
+                  </Text>
+                  {dish.source === 'TheMealDB' && (
+                    <Text style={styles.realRecipeTag}>🍽️ Real Recipe Data</Text>
+                  )}
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
+        
+        <View style={styles.exampleSection}>
+          <Text style={styles.exampleTitle}>💡 Example dish searches to try:</Text>
+          <Text style={styles.exampleSubtitle}>🌐 Searches real recipes from TheMealDB + local database</Text>
+          <TouchableOpacity
+            style={styles.exampleButton}
+            onPress={() => {
+              setDishSearchInput('chicken teriyaki');
+              searchDishes('chicken teriyaki');
+            }}
+          >
+            <Text style={styles.exampleButtonText}>Try: Chicken Teriyaki</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.exampleButton}
+            onPress={() => {
+              setDishSearchInput('beef stroganoff');
+              searchDishes('beef stroganoff');
+            }}
+          >
+            <Text style={styles.exampleButtonText}>Try: Beef Stroganoff</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.exampleButton}
+            onPress={() => {
+              setDishSearchInput('apple pie');
+              searchDishes('apple pie');
+            }}
+          >
+            <Text style={styles.exampleButtonText}>Try: Apple Pie</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -689,7 +1055,10 @@ export default function App() {
     }
 
     const statusDisplay = getStatusDisplay(analysisResult.status);
-    const isFavorite = productData.barcode && favorites.some(fav => fav.barcode === productData.barcode);
+    const identifier = productData.isDish ? productData.product_name : productData.barcode;
+    const isFavorite = identifier && favorites.some(fav => 
+      fav.isDish ? fav.product_name === identifier : fav.barcode === identifier
+    );
 
     return (
       <SafeAreaView style={styles.container}>
@@ -698,6 +1067,16 @@ export default function App() {
             <Text style={styles.productName}>{productData.product_name}</Text>
             {productData.brands && (
               <Text style={styles.brandName}>{productData.brands}</Text>
+            )}
+            {productData.isDish && (
+              <Text style={styles.dishNote}>
+                📋 {productData.dishSource === 'TheMealDB' ? 'Real Recipe Analysis' : 'General Recipe Analysis'}
+              </Text>
+            )}
+            {productData.dishCategory && productData.dishArea && (
+              <Text style={styles.dishCategoryText}>
+                {productData.dishCategory} • {productData.dishArea}
+              </Text>
             )}
           </View>
           
@@ -728,13 +1107,23 @@ export default function App() {
           
           {productData.ingredients_text && (
             <View style={styles.ingredientsSection}>
-              <Text style={styles.ingredientsTitle}>Full Ingredients List:</Text>
+              <Text style={styles.ingredientsTitle}>
+                {productData.isDish ? 'Typical Ingredients:' : 'Full Ingredients List:'}
+              </Text>
               <Text style={styles.ingredientsText}>{productData.ingredients_text}</Text>
+              {productData.isDish && (
+                <Text style={styles.dishDisclaimer}>
+                  ⚠️ Note: {productData.dishSource === 'TheMealDB' ? 
+                    'This analysis is based on a real recipe from TheMealDB. However, preparation methods and ingredient brands may vary.' :
+                    'This is a general analysis of typical ingredients. Actual recipes may vary significantly.'
+                  } Always check with the chef or restaurant for specific ingredients.
+                </Text>
+              )}
             </View>
           )}
           
           <View style={styles.actionButtons}>
-            {productData.barcode && (
+            {identifier && (
               <TouchableOpacity
                 style={[styles.button, isFavorite ? styles.favoriteButton : styles.secondaryButton]}
                 onPress={() => toggleFavorite(productData)}
@@ -749,13 +1138,20 @@ export default function App() {
               style={[styles.button, styles.primaryButton]}
               onPress={() => {
                 setScanned(false); // Reset scanned state
-                setCurrentScreen('scanner');
+                if (productData.isDish) {
+                  setCurrentScreen('searchDish');
+                } else {
+                  setCurrentScreen('scanner');
+                }
                 setAnalysisResult(null);
                 setProductData(null);
                 setBarcodeInput('');
+                setDishSearchInput('');
               }}
             >
-              <Text style={styles.buttonText}>📷 Scan Another</Text>
+              <Text style={styles.buttonText}>
+                {productData.isDish ? '🍽️ Search Another Dish' : '📷 Scan Another'}
+              </Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -790,11 +1186,11 @@ export default function App() {
       
       <ScrollView style={styles.favoritesContainer}>
         {favorites.length === 0 ? (
-          <Text style={styles.emptyText}>No favorite products yet. Start scanning to add some!</Text>
+          <Text style={styles.emptyText}>No favorite products or dishes yet. Start scanning or searching to add some!</Text>
         ) : (
-          favorites.map((product, index) => {
+          favorites.map((item, index) => {
             // Analyze the product to get gluten status
-            const analysis = analyzeIngredients(product.ingredients_text);
+            const analysis = analyzeIngredients(item.ingredients_text);
             const statusDisplay = getStatusDisplay(analysis.status);
             
             return (
@@ -803,16 +1199,19 @@ export default function App() {
                 style={[styles.favoriteItem, { borderLeftColor: statusDisplay.color, borderLeftWidth: 5 }]}
                 onPress={() => {
                   // Set up the product data and analysis result
-                  setProductData(product);
+                  setProductData(item);
                   setAnalysisResult(analysis);
                   setCurrentScreen('result');
                 }}
               >
                 <View style={styles.favoriteItemHeader}>
                   <View style={styles.favoriteItemInfo}>
-                    <Text style={styles.favoriteProductName}>{product.product_name}</Text>
-                    {product.brands && (
-                      <Text style={styles.favoriteBrandName}>{product.brands}</Text>
+                    <Text style={styles.favoriteProductName}>{item.product_name}</Text>
+                    {item.brands && (
+                      <Text style={styles.favoriteBrandName}>{item.brands}</Text>
+                    )}
+                    {item.isDish && (
+                      <Text style={styles.favoriteDishTag}>🍽️ Recipe</Text>
                     )}
                   </View>
                   <View style={styles.favoriteStatusContainer}>
@@ -849,7 +1248,7 @@ export default function App() {
                     style={styles.removeFavoriteButton}
                     onPress={(e) => {
                       e.stopPropagation(); // Prevent triggering the main onPress
-                      toggleFavorite(product);
+                      toggleFavorite(item);
                     }}
                   >
                     <Text style={styles.removeFavoriteText}>Remove</Text>
@@ -879,6 +1278,8 @@ export default function App() {
       return renderManualBarcodeScreen();
     case 'searchFood':
       return renderFoodSearchScreen();
+    case 'searchDish':
+      return renderDishSearchScreen();
     case 'manual':
       return renderManualScreen();
     case 'result':
@@ -1271,6 +1672,84 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 50,
     paddingHorizontal: 20,
+  },
+  dishNote: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    marginTop: 5,
+  },
+  dishDisclaimer: {
+    fontSize: 12,
+    color: '#FF9800',
+    fontStyle: 'italic',
+    marginTop: 10,
+    lineHeight: 16,
+  },
+  dishResultItem: {
+    backgroundColor: '#f8f9fa',
+  },
+  dishResultHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  dishStatusContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 60,
+  },
+  dishStatusIcon: {
+    fontSize: 20,
+    marginBottom: 2,
+  },
+  dishStatusText: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  dishDescription: {
+    fontSize: 13,
+    color: '#555',
+    fontStyle: 'italic',
+    marginBottom: 8,
+  },
+  favoriteDishTag: {
+    fontSize: 12,
+    color: '#FF9800',
+    fontWeight: 'bold',
+  },
+  dishCategoryText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
+  dishResultInfo: {
+    flex: 1,
+    marginRight: 10,
+  },
+  dishSourceText: {
+    fontSize: 11,
+    color: '#2196F3',
+    marginTop: 3,
+    fontWeight: '500',
+  },
+  realRecipeTag: {
+    fontSize: 11,
+    color: '#4CAF50',
+    fontWeight: 'bold',
+    marginTop: 5,
+    textAlign: 'right',
+  },
+  exampleSubtitle: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 8,
+    fontStyle: 'italic',
   },
   testSection: {
     marginTop: 20,
