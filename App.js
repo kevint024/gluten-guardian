@@ -336,7 +336,7 @@ export default function App() {
     }
   };
 
-  // Search for dishes/recipes using TheMealDB API
+  // Search for dishes/recipes using multiple APIs for comprehensive coverage
   const searchDishes = async (searchTerm) => {
     if (!searchTerm || searchTerm.trim().length < 2) {
       Alert.alert('Error', 'Please enter at least 2 characters to search.');
@@ -347,44 +347,277 @@ export default function App() {
     setSearchResults([]);
 
     try {
-      // First try TheMealDB API for recipe search
-      const response = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(searchTerm)}`);
-      const data = await response.json();
-      
       let searchResults = [];
 
-      if (data.meals && data.meals.length > 0) {
-        // Process TheMealDB results
-        searchResults = data.meals.slice(0, 6).map(meal => {
-          // Extract ingredients from the meal object
-          const ingredients = [];
-          for (let i = 1; i <= 20; i++) {
-            const ingredient = meal[`strIngredient${i}`];
-            if (ingredient && ingredient.trim()) {
-              ingredients.push(ingredient.trim().toLowerCase());
+      // 1. Try MealDB by Category (Free, no key required) - Start with category search
+      try {
+        console.log('🔍 Searching MealDB by category for:', searchTerm);
+        
+        // First try a direct search
+        let mealDBResponse = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(searchTerm)}`);
+        let mealDBData = await mealDBResponse.json();
+        
+        console.log('📡 MealDB Direct Search Response Status:', mealDBResponse.status);
+        console.log('📋 MealDB Direct Search Data:', mealDBData);
+        
+        if (mealDBData.meals && mealDBData.meals.length > 0) {
+          console.log(`✅ MealDB direct search found ${mealDBData.meals.length} recipes`);
+          
+          const mealDBResults = mealDBData.meals.slice(0, 4).map(meal => {
+            const ingredients = [];
+            for (let i = 1; i <= 20; i++) {
+              const ingredient = meal[`strIngredient${i}`];
+              if (ingredient && ingredient.trim()) {
+                ingredients.push(ingredient.trim().toLowerCase());
+              }
             }
-          }
+            
+            const ingredientsText = ingredients.join(', ');
+            const analysis = analyzeIngredients(ingredientsText);
+            
+            return {
+              name: meal.strMeal,
+              ingredients: ingredientsText,
+              instructions: meal.strInstructions,
+              category: meal.strCategory,
+              area: meal.strArea,
+              image: meal.strMealThumb,
+              status: analysis.status,
+              description: `${meal.strCategory} dish from ${meal.strArea}`,
+              source: 'MealDB',
+              analysis: analysis
+            };
+          });
           
-          const ingredientsText = ingredients.join(', ');
-          const analysis = analyzeIngredients(ingredientsText);
-          
-          return {
-            name: meal.strMeal,
-            ingredients: ingredientsText,
-            instructions: meal.strInstructions,
-            category: meal.strCategory,
-            area: meal.strArea,
-            image: meal.strMealThumb,
-            status: analysis.status,
-            description: `${meal.strCategory} dish from ${meal.strArea}`,
-            source: 'TheMealDB',
-            analysis: analysis
-          };
-        });
+          searchResults = mealDBResults.filter(result => result.ingredients && result.ingredients.trim());
+          console.log(`🎯 MealDB processed ${searchResults.length} valid recipes`);
+        } else {
+          console.log('❌ MealDB direct search returned no recipes');
+        }
+      } catch (mealDBError) {
+        console.log('❌ MealDB API Error:', mealDBError.message);
+        console.log('MealDB API not available, trying alternatives...');
       }
 
-      // If no results from TheMealDB, fall back to our static database
-      if (searchResults.length === 0) {
+      // 2. Try Tasty API (Free, 4000+ recipes) - Better alternative to Recipe Puppy
+      if (searchResults.length < 3) {
+        try {
+          console.log('🔍 Searching Tasty API for:', searchTerm);
+          const tastyResponse = await fetch(
+            `https://tasty.p.rapidapi.com/recipes/list?from=0&size=6&q=${encodeURIComponent(searchTerm)}`,
+            {
+              method: 'GET',
+              headers: {
+                'X-RapidAPI-Key': '8238c2f035msh09d241fe20a515ep1d0ad8jsnbb9cc63ab3f6', // Use 'demo' for testing - get free key from RapidAPI
+                'X-RapidAPI-Host': 'tasty.p.rapidapi.com'
+              }
+            }
+          );
+          
+          console.log('📡 Tasty API Response Status:', tastyResponse.status);
+          
+          if (tastyResponse.ok) {
+            const tastyData = await tastyResponse.json();
+            console.log('📋 Tasty API Data:', tastyData);
+            
+            if (tastyData.results && tastyData.results.length > 0) {
+              console.log(`✅ Tasty found ${tastyData.results.length} recipes`);
+              const tastyResults = tastyData.results.slice(0, 4).map(recipe => {
+                // Extract ingredients from sections
+                let ingredientsText = '';
+                if (recipe.sections && recipe.sections.length > 0) {
+                  const allIngredients = [];
+                  recipe.sections.forEach(section => {
+                    if (section.components) {
+                      section.components.forEach(component => {
+                        if (component.ingredient && component.ingredient.name) {
+                          allIngredients.push(component.ingredient.name.toLowerCase());
+                        }
+                      });
+                    }
+                  });
+                  ingredientsText = allIngredients.join(', ');
+                }
+                
+                const analysis = analyzeIngredients(ingredientsText);
+                
+                return {
+                  name: recipe.name || recipe.title,
+                  ingredients: ingredientsText,
+                  instructions: 'See source for full instructions',
+                  category: recipe.tags ? recipe.tags[0]?.name || 'Recipe' : 'Recipe',
+                  area: 'Various',
+                  image: recipe.thumbnail_url || null,
+                  status: analysis.status,
+                  description: `${recipe.tags ? recipe.tags[0]?.name || 'Recipe' : 'Recipe'} • ${recipe.cook_time_minutes ? recipe.cook_time_minutes + ' min' : 'Quick recipe'}`,
+                  source: 'Tasty',
+                  analysis: analysis,
+                  cook_time: recipe.cook_time_minutes
+                };
+              });
+              
+              // Add Tasty results that aren't duplicates
+              tastyResults.forEach(result => {
+                if (result.ingredients && result.ingredients.trim() && 
+                    !searchResults.some(existing => 
+                      existing.name.toLowerCase() === result.name.toLowerCase()
+                    )) {
+                  searchResults.push(result);
+                }
+              });
+              console.log(`🎯 Tasty processed ${tastyResults.length} valid recipes, total now: ${searchResults.length}`);
+            } else {
+              console.log('❌ Tasty returned no recipes');
+            }
+          } else {
+            console.log('❌ Tasty API request failed with status:', tastyResponse.status);
+          }
+        } catch (tastyError) {
+          console.log('❌ Tasty API Error:', tastyError.message);
+          console.log('Tasty API not available, trying alternatives...');
+        }
+      }
+
+      // 3. Try MealDB Category Search (if direct search didn't work well)
+      if (searchResults.length < 3) {
+        try {
+          console.log('🔍 Trying MealDB category search for:', searchTerm);
+          
+          // Try searching by first letter or common categories
+          const commonCategories = ['Chicken', 'Beef', 'Pork', 'Seafood', 'Vegetarian', 'Dessert', 'Pasta'];
+          const matchingCategory = commonCategories.find(cat => 
+            searchTerm.toLowerCase().includes(cat.toLowerCase()) || 
+            cat.toLowerCase().includes(searchTerm.toLowerCase())
+          );
+          
+          if (matchingCategory) {
+            const categoryResponse = await fetch(`https://www.themealdb.com/api/json/v1/1/filter.php?c=${matchingCategory}`);
+            const categoryData = await categoryResponse.json();
+            
+            console.log('📡 MealDB Category Search Response Status:', categoryResponse.status);
+            console.log('📋 MealDB Category Data:', categoryData);
+            
+            if (categoryData.meals && categoryData.meals.length > 0) {
+              console.log(`✅ MealDB category search found ${categoryData.meals.length} recipes`);
+              
+              // Get details for first few meals
+              const detailedMeals = await Promise.all(
+                categoryData.meals.slice(0, 3).map(async meal => {
+                  try {
+                    const detailResponse = await fetch(`https://www.themealdb.com/api/json/v1/1/lookup.php?i=${meal.idMeal}`);
+                    const detailData = await detailResponse.json();
+                    return detailData.meals ? detailData.meals[0] : null;
+                  } catch {
+                    return null;
+                  }
+                })
+              );
+              
+              const validMeals = detailedMeals.filter(meal => meal !== null);
+              
+              validMeals.forEach(meal => {
+                const ingredients = [];
+                for (let i = 1; i <= 20; i++) {
+                  const ingredient = meal[`strIngredient${i}`];
+                  if (ingredient && ingredient.trim()) {
+                    ingredients.push(ingredient.trim().toLowerCase());
+                  }
+                }
+                
+                const ingredientsText = ingredients.join(', ');
+                const analysis = analyzeIngredients(ingredientsText);
+                
+                const result = {
+                  name: meal.strMeal,
+                  ingredients: ingredientsText,
+                  instructions: meal.strInstructions,
+                  category: meal.strCategory,
+                  area: meal.strArea,
+                  image: meal.strMealThumb,
+                  status: analysis.status,
+                  description: `${meal.strCategory} dish from ${meal.strArea}`,
+                  source: 'MealDB',
+                  analysis: analysis
+                };
+                
+                if (!searchResults.some(existing => 
+                  existing.name.toLowerCase() === result.name.toLowerCase()
+                )) {
+                  searchResults.push(result);
+                }
+              });
+              
+              console.log(`🎯 MealDB category search added ${validMeals.length} recipes, total now: ${searchResults.length}`);
+            }
+          }
+        } catch (categoryError) {
+          console.log('❌ MealDB Category Search Error:', categoryError.message);
+        }
+      }
+
+      // 4. Try Edamam Recipe API (2+ million recipes) - Alternative free option
+      if (searchResults.length < 2) {
+        try {
+          console.log('🔍 Searching Edamam API for:', searchTerm);
+          // Using demo credentials - in production, you'd need your own API key
+          const edamamResponse = await fetch(
+            `https://api.edamam.com/search?q=${encodeURIComponent(searchTerm)}&app_id=demo&app_key=demo&from=0&to=6`
+          );
+          
+          console.log('📡 Edamam API Response Status:', edamamResponse.status);
+          
+          if (edamamResponse.ok) {
+            const edamamData = await edamamResponse.json();
+            console.log('📋 Edamam API Data:', edamamData);
+            
+            if (edamamData.hits && edamamData.hits.length > 0) {
+              console.log(`✅ Edamam found ${edamamData.hits.length} recipes`);
+              const edamamResults = edamamData.hits.slice(0, 3).map(hit => {
+                const recipe = hit.recipe;
+                const ingredientsText = recipe.ingredientLines ? 
+                  recipe.ingredientLines.join(', ').toLowerCase() : '';
+                
+                const analysis = analyzeIngredients(ingredientsText);
+                
+                return {
+                  name: recipe.label,
+                  ingredients: ingredientsText,
+                  instructions: 'See source for full instructions',
+                  category: recipe.dishType ? recipe.dishType[0] : 'Main Course',
+                  area: recipe.cuisineType ? recipe.cuisineType[0] : 'International',
+                  image: recipe.image,
+                  status: analysis.status,
+                  description: `${recipe.dishType ? recipe.dishType[0] : 'Recipe'} • ${Math.round(recipe.calories || 0)} cal`,
+                  source: 'Edamam',
+                  analysis: analysis,
+                  calories: Math.round(recipe.calories || 0)
+                };
+              });
+              
+              // Add Edamam results that aren't duplicates
+              edamamResults.forEach(result => {
+                if (!searchResults.some(existing => 
+                  existing.name.toLowerCase() === result.name.toLowerCase()
+                )) {
+                  searchResults.push(result);
+                }
+              });
+              console.log(`🎯 Edamam processed ${edamamResults.length} valid recipes, total now: ${searchResults.length}`);
+            } else {
+              console.log('❌ Edamam returned no recipes');
+            }
+          } else {
+            console.log('❌ Edamam API request failed with status:', edamamResponse.status);
+          }
+        } catch (edamamError) {
+          console.log('❌ Edamam API Error:', edamamError.message);
+          console.log('Edamam API not available, using local database...');
+        }
+      }
+
+      // 5. Fall back to local database if APIs don't provide enough results
+      if (searchResults.length < 2) {
+        console.log('🔍 Searching Local Database for:', searchTerm);
         const lowerSearchTerm = searchTerm.toLowerCase().trim();
         const matchingDishes = [];
 
@@ -423,9 +656,18 @@ export default function App() {
           });
         }
 
-        searchResults = matchingDishes;
+        // Add local results that aren't duplicates
+        matchingDishes.forEach(result => {
+          if (!searchResults.some(existing => 
+            existing.name.toLowerCase() === result.name.toLowerCase()
+          )) {
+            searchResults.push(result);
+          }
+        });
+        console.log(`🎯 Local Database found ${matchingDishes.length} dishes, total now: ${searchResults.length}`);
       }
 
+      console.log(`🏁 Final search results: ${searchResults.length} total recipes found`);
       setSearchResults(searchResults.slice(0, 8)); // Limit to 8 results
       
       if (searchResults.length === 0) {
@@ -469,14 +711,19 @@ export default function App() {
     const productData = {
       product_name: dish.name,
       ingredients_text: dish.ingredients,
-      brands: dish.source === 'TheMealDB' ? `${dish.category} - ${dish.area}` : 'General Recipe',
+      brands: dish.source === 'TheMealDB' ? `${dish.category} - ${dish.area}` : 
+              dish.source === 'Spoonacular' ? `${dish.category} - ${dish.area}` :
+              dish.source === 'Edamam' ? `${dish.category} - ${dish.area}` :
+              'General Recipe',
       barcode: null,
       isDish: true,
       dishDescription: dish.description,
       dishCategory: dish.category,
       dishArea: dish.area,
       dishImage: dish.image,
-      dishSource: dish.source
+      dishSource: dish.source,
+      servings: dish.servings,
+      calories: dish.calories
     };
     
     setProductData(productData);
@@ -875,6 +1122,8 @@ export default function App() {
                         <Text style={styles.dishSourceText}>
                           📡 {dish.source}
                           {dish.category && dish.area && ` • ${dish.category} • ${dish.area}`}
+                          {dish.servings && ` • Serves ${dish.servings}`}
+                          {dish.calories && ` • ${dish.calories} cal`}
                         </Text>
                       )}
                     </View>
@@ -891,7 +1140,7 @@ export default function App() {
                       dish.ingredients.substring(0, 100) + '...' : 
                       dish.ingredients}
                   </Text>
-                  {dish.source === 'TheMealDB' && (
+                  {(dish.source === 'MealDB' || dish.source === 'Tasty' || dish.source === 'Edamam') && (
                     <Text style={styles.realRecipeTag}>🍽️ Real Recipe Data</Text>
                   )}
                 </TouchableOpacity>
@@ -902,33 +1151,33 @@ export default function App() {
         
         <View style={styles.exampleSection}>
           <Text style={styles.exampleTitle}>💡 Example dish searches to try:</Text>
-          <Text style={styles.exampleSubtitle}>🌐 Searches real recipes from TheMealDB + local database</Text>
+          <Text style={styles.exampleSubtitle}>🌐 Searches 1000+ free recipes from MealDB, Tasty, Edamam + local database</Text>
           <TouchableOpacity
             style={styles.exampleButton}
             onPress={() => {
-              setDishSearchInput('chicken teriyaki');
-              searchDishes('chicken teriyaki');
+              setDishSearchInput('chicken tikka masala');
+              searchDishes('chicken tikka masala');
             }}
           >
-            <Text style={styles.exampleButtonText}>Try: Chicken Teriyaki</Text>
+            <Text style={styles.exampleButtonText}>Try: Chicken Tikka Masala</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.exampleButton}
             onPress={() => {
-              setDishSearchInput('beef stroganoff');
-              searchDishes('beef stroganoff');
+              setDishSearchInput('chocolate cake');
+              searchDishes('chocolate cake');
             }}
           >
-            <Text style={styles.exampleButtonText}>Try: Beef Stroganoff</Text>
+            <Text style={styles.exampleButtonText}>Try: Chocolate Cake</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.exampleButton}
             onPress={() => {
-              setDishSearchInput('apple pie');
-              searchDishes('apple pie');
+              setDishSearchInput('vegetable stir fry');
+              searchDishes('vegetable stir fry');
             }}
           >
-            <Text style={styles.exampleButtonText}>Try: Apple Pie</Text>
+            <Text style={styles.exampleButtonText}>Try: Vegetable Stir Fry</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1070,12 +1319,15 @@ export default function App() {
             )}
             {productData.isDish && (
               <Text style={styles.dishNote}>
-                📋 {productData.dishSource === 'TheMealDB' ? 'Real Recipe Analysis' : 'General Recipe Analysis'}
+                📋 {productData.dishSource === 'TheMealDB' || productData.dishSource === 'Spoonacular' || productData.dishSource === 'Edamam' ? 
+                     'Real Recipe Analysis' : 'General Recipe Analysis'}
               </Text>
             )}
             {productData.dishCategory && productData.dishArea && (
               <Text style={styles.dishCategoryText}>
                 {productData.dishCategory} • {productData.dishArea}
+                {productData.servings && ` • Serves ${productData.servings}`}
+                {productData.calories && ` • ${productData.calories} calories`}
               </Text>
             )}
           </View>
@@ -1113,8 +1365,8 @@ export default function App() {
               <Text style={styles.ingredientsText}>{productData.ingredients_text}</Text>
               {productData.isDish && (
                 <Text style={styles.dishDisclaimer}>
-                  ⚠️ Note: {productData.dishSource === 'TheMealDB' ? 
-                    'This analysis is based on a real recipe from TheMealDB. However, preparation methods and ingredient brands may vary.' :
+                  ⚠️ Note: {productData.dishSource === 'MealDB' || productData.dishSource === 'Tasty' || productData.dishSource === 'Edamam' ? 
+                    'This analysis is based on a real recipe from a comprehensive recipe database. However, preparation methods and ingredient brands may vary between restaurants and home cooking.' :
                     'This is a general analysis of typical ingredients. Actual recipes may vary significantly.'
                   } Always check with the chef or restaurant for specific ingredients.
                 </Text>
