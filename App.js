@@ -302,7 +302,12 @@ export default function App() {
     if (isFavorite) {
       newFavorites = favorites.filter(fav => fav.barcode !== product.barcode);
     } else {
-      newFavorites = [...favorites, product];
+      // Add timestamp when adding to favorites
+      const favoriteProduct = {
+        ...product,
+        dateAdded: new Date().toISOString()
+      };
+      newFavorites = [...favorites, favoriteProduct];
     }
     
     saveFavorites(newFavorites);
@@ -761,6 +766,16 @@ export default function App() {
         >
           <Text style={styles.backButtonText}>← Home</Text>
         </TouchableOpacity>
+        
+        {/* Show favorites button if we have favorites and this product can be favorited */}
+        {favorites.length > 0 && (
+          <TouchableOpacity
+            style={[styles.backButton, { right: 20, left: 'auto' }]}
+            onPress={() => setCurrentScreen('favorites')}
+          >
+            <Text style={styles.backButtonText}>⭐ Favorites</Text>
+          </TouchableOpacity>
+        )}
       </SafeAreaView>
     );
   };
@@ -770,26 +785,80 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>⭐ Favorite Products</Text>
+        <Text style={styles.subtitle}>Tap any item to view full analysis</Text>
       </View>
       
       <ScrollView style={styles.favoritesContainer}>
         {favorites.length === 0 ? (
           <Text style={styles.emptyText}>No favorite products yet. Start scanning to add some!</Text>
         ) : (
-          favorites.map((product, index) => (
-            <View key={index} style={styles.favoriteItem}>
-              <Text style={styles.favoriteProductName}>{product.product_name}</Text>
-              {product.brands && (
-                <Text style={styles.favoriteBrandName}>{product.brands}</Text>
-              )}
+          favorites.map((product, index) => {
+            // Analyze the product to get gluten status
+            const analysis = analyzeIngredients(product.ingredients_text);
+            const statusDisplay = getStatusDisplay(analysis.status);
+            
+            return (
               <TouchableOpacity
-                style={styles.removeFavoriteButton}
-                onPress={() => toggleFavorite(product)}
+                key={index}
+                style={[styles.favoriteItem, { borderLeftColor: statusDisplay.color, borderLeftWidth: 5 }]}
+                onPress={() => {
+                  // Set up the product data and analysis result
+                  setProductData(product);
+                  setAnalysisResult(analysis);
+                  setCurrentScreen('result');
+                }}
               >
-                <Text style={styles.removeFavoriteText}>Remove</Text>
+                <View style={styles.favoriteItemHeader}>
+                  <View style={styles.favoriteItemInfo}>
+                    <Text style={styles.favoriteProductName}>{product.product_name}</Text>
+                    {product.brands && (
+                      <Text style={styles.favoriteBrandName}>{product.brands}</Text>
+                    )}
+                  </View>
+                  <View style={styles.favoriteStatusContainer}>
+                    <Text style={styles.favoriteStatusIcon}>{statusDisplay.icon}</Text>
+                    <Text style={[styles.favoriteStatusText, { color: statusDisplay.color }]}>
+                      {statusDisplay.text}
+                    </Text>
+                  </View>
+                </View>
+                
+                {/* Show flagged ingredients if any */}
+                {analysis.flaggedIngredients && analysis.flaggedIngredients.length > 0 && (
+                  <View style={styles.favoriteWarning}>
+                    <Text style={styles.favoriteWarningText}>
+                      ⚠️ Contains: {analysis.flaggedIngredients.slice(0, 2).join(', ')}
+                      {analysis.flaggedIngredients.length > 2 ? '...' : ''}
+                    </Text>
+                  </View>
+                )}
+                
+                {/* Show ambiguous ingredients if any and no gluten ingredients */}
+                {analysis.ambiguousIngredients && analysis.ambiguousIngredients.length > 0 && 
+                 (!analysis.flaggedIngredients || analysis.flaggedIngredients.length === 0) && (
+                  <View style={styles.favoriteCaution}>
+                    <Text style={styles.favoriteCautionText}>
+                      ⚠️ May contain: {analysis.ambiguousIngredients.slice(0, 2).join(', ')}
+                      {analysis.ambiguousIngredients.length > 2 ? '...' : ''}
+                    </Text>
+                  </View>
+                )}
+                
+                <View style={styles.favoriteActions}>
+                  <TouchableOpacity
+                    style={styles.removeFavoriteButton}
+                    onPress={(e) => {
+                      e.stopPropagation(); // Prevent triggering the main onPress
+                      toggleFavorite(product);
+                    }}
+                  >
+                    <Text style={styles.removeFavoriteText}>Remove</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.tapHintText}>Tap to view details →</Text>
+                </View>
               </TouchableOpacity>
-            </View>
-          ))
+            );
+          })
         )}
       </ScrollView>
       
@@ -1108,6 +1177,70 @@ const styles = StyleSheet.create({
     padding: 15,
     borderRadius: 8,
     marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  favoriteItemHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  favoriteItemInfo: {
+    flex: 1,
+    marginRight: 10,
+  },
+  favoriteStatusContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 60,
+  },
+  favoriteStatusIcon: {
+    fontSize: 24,
+    marginBottom: 2,
+  },
+  favoriteStatusText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  favoriteWarning: {
+    backgroundColor: '#ffebee',
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 8,
+  },
+  favoriteWarningText: {
+    fontSize: 12,
+    color: '#c62828',
+    fontWeight: '500',
+  },
+  favoriteCaution: {
+    backgroundColor: '#fff3e0',
+    padding: 8,
+    borderRadius: 6,
+    marginBottom: 8,
+  },
+  favoriteCautionText: {
+    fontSize: 12,
+    color: '#ef6c00',
+    fontWeight: '500',
+  },
+  favoriteActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 5,
+  },
+  tapHintText: {
+    fontSize: 12,
+    color: '#2196F3',
+    fontStyle: 'italic',
   },
   favoriteProductName: {
     fontSize: 16,
