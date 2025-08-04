@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "build:web": "expo export --platform web",
     "preview:web": "expo export --platform web && npx serve dist",
+    "deploy:gh-pages": "expo export --platform web && gh-pages -d dist",
     "demo": "node demo.js",
     "switch": "node switch-version.js",
     "use-main": "node switch-version.js main",
@@ -27,6 +28,7 @@
   ],
   "author": "Gluten Guardian Team",
   "dependencies": {
+    "@expo/metro-runtime": "~5.0.4",
     "@react-native-async-storage/async-storage": "^2.1.2",
     "expo": "~53.0.20",
     "expo-camera": "~16.1.11",
@@ -34,11 +36,11 @@
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.5",
-    "react-native-web": "~0.21.0",
-    "@expo/metro-runtime": "~5.0.4"
+    "react-native-web": "~0.21.0"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0"
+    "@babel/core": "^7.20.0",
+    "gh-pages": "^6.3.0"
   },
   "private": true
 }
