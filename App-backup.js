@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Platform,
+  Dimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -869,7 +870,8 @@ export default function App() {
 
   // Home Screen
   const renderHomeScreen = () => (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.safeContainer}>
+      <StatusBar style="dark" backgroundColor="#f5f5f5" />
       <View style={styles.header}>
         <Text style={styles.title}>🛡️ Gluten Guardian</Text>
         <Text style={styles.subtitle}>Your gluten-free companion</Text>
@@ -948,15 +950,15 @@ export default function App() {
         </TouchableOpacity>
       </View>
       
-      <StatusBar style="auto" />
-    </SafeAreaView>
+      </SafeAreaView>
   );
 
   // Barcode Scanner Screen
   const renderScannerScreen = () => {
     if (hasPermission === null) {
       return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.safeContainer}>
+          <StatusBar style="dark" backgroundColor="#f5f5f5" />
           <View style={styles.permissionContainer}>
             <Text style={styles.permissionText}>Camera permission required</Text>
             <TouchableOpacity style={styles.button} onPress={getCameraPermissions}>
@@ -974,7 +976,8 @@ export default function App() {
     }
     if (hasPermission === false) {
       return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.safeContainer}>
+          <StatusBar style="dark" backgroundColor="#f5f5f5" />
           <View style={styles.permissionContainer}>
             <Text style={styles.permissionText}>Camera access denied. Please enable camera permissions in settings.</Text>
             <TouchableOpacity
@@ -989,10 +992,11 @@ export default function App() {
     }
 
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.safeContainer, { backgroundColor: '#000000' }]}>
+        <StatusBar style="light" backgroundColor="#000000" />
         <View style={styles.header}>
-          <Text style={styles.title}>Scan Product Barcode</Text>
-          <Text style={styles.subtitle}>Align the barcode within the frame to scan</Text>
+          <Text style={[styles.title, { color: '#ffffff' }]}>Scan Product Barcode</Text>
+          <Text style={[styles.subtitle, { color: '#cccccc' }]}>Align the barcode within the frame to scan</Text>
         </View>
         
         <View style={styles.scannerContainer}>
@@ -1009,10 +1013,10 @@ export default function App() {
         </View>
         
         <TouchableOpacity
-          style={styles.backButton}
+          style={[styles.backButton, { backgroundColor: 'rgba(255,255,255,0.8)' }]}
           onPress={() => switchToScreen('home')}
         >
-          <Text style={styles.backButtonText}>← Back</Text>
+          <Text style={[styles.backButtonText, { color: '#000000' }]}>← Back</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -1035,7 +1039,8 @@ export default function App() {
 
   // Food Search Screen
   const renderFoodSearchScreen = () => (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.safeContainer}>
+      <StatusBar style="dark" backgroundColor="#f5f5f5" />
       <View style={styles.header}>
         <Text style={styles.title}>Search Food Products</Text>
         <Text style={styles.subtitle}>Enter a food product name to find packaged items</Text>
@@ -1121,11 +1126,14 @@ export default function App() {
         <Text style={styles.backButtonText}>← Back</Text>
       </TouchableOpacity>
     </SafeAreaView>
+    </>
   );
 
   // Dish Search Screen
   const renderDishSearchScreen = () => (
-    <SafeAreaView style={styles.container}>
+    <>
+      <StatusBar style="dark" backgroundColor="#f5f5f5" />
+      <SafeAreaView style={styles.safeContainer}>
       <View style={styles.header}>
         <Text style={styles.title}>Search Dishes & Recipes</Text>
         <Text style={styles.subtitle}>Enter a dish name to check for gluten</Text>
@@ -1244,11 +1252,14 @@ export default function App() {
         <Text style={styles.backButtonText}>← Back</Text>
       </TouchableOpacity>
     </SafeAreaView>
+    </>
   );
 
   // Manual Barcode Entry Screen
   const renderManualBarcodeScreen = () => (
-    <SafeAreaView style={styles.container}>
+    <>
+      <StatusBar style="dark" backgroundColor="#f5f5f5" />
+      <SafeAreaView style={styles.safeContainer}>
       <View style={styles.header}>
         <Text style={styles.title}>Manual Barcode Entry</Text>
         <Text style={styles.subtitle}>Enter a product barcode to look up</Text>
@@ -1598,10 +1609,22 @@ export default function App() {
   }
 }
 
+// Get safe area dimensions
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const statusBarHeight = Platform.OS === 'ios' ? 44 : 0; // iOS has dynamic island/notch
+const bottomSafeArea = Platform.OS === 'ios' ? 34 : 0; // iOS home indicator
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+    paddingTop: Platform.OS === 'android' ? 25 : 0, // Account for Android status bar
+  },
+  safeContainer: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+    paddingTop: Platform.OS === 'android' ? 45 : statusBarHeight, // Extra padding for Android
+    paddingBottom: Platform.OS === 'android' ? 20 : bottomSafeArea,
   },
   header: {
     alignItems: 'center',
