@@ -15,23 +15,220 @@ import { StatusBar } from 'expo-status-bar';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, Camera } from 'expo-camera';
 
-// List of gluten-containing ingredients
+// Comprehensive list of gluten-containing ingredients with variations
 const GLUTEN_INGREDIENTS = [
-  'wheat', 'barley', 'rye', 'malt', 'semolina', 'triticale', 'spelt', 'farro',
-  'durum', 'vital wheat gluten', 'graham flour', 'brewer\'s yeast', 'brewers yeast',
-  'modified food starch', 'maltodextrin', 'hydrolyzed wheat protein', 'bulgur',
-  'couscous', 'einkorn', 'emmer', 'kamut', 'seitan', 'wheat germ', 'wheat bran',
-  'wheat flour', 'bread flour', 'cake flour', 'pastry flour', 'self-rising flour',
-  'enriched flour', 'bleached flour', 'unbleached flour', 'whole wheat',
-  'wheat starch', 'wheat protein', 'gluten', 'oats', 'oat', 'matzo', 'matzah'
+  // Wheat and wheat derivatives
+  'wheat', 'triticum', 'wheat flour', 'whole wheat', 'whole wheat flour', 'wheat grain',
+  'wheat bran', 'wheat germ', 'wheat starch', 'wheat protein', 'wheat gluten',
+  'vital wheat gluten', 'wheat berries', 'wheat grass', 'wheatgrass', 'wheat meal',
+  'cracked wheat', 'durum wheat', 'durum', 'durum flour', 'semolina', 'semolina flour',
+  'farina', 'cream of wheat', 'wheat middlings', 'wheat shorts', 'red wheat', 'white wheat',
+  
+  // Flour types (wheat-based)
+  'flour', 'white flour', 'plain flour', 'all-purpose flour', 'bread flour', 'cake flour',
+  'pastry flour', 'self-rising flour', 'self-raising flour', 'enriched flour', 'bleached flour',
+  'unbleached flour', 'graham flour', 'whole grain flour', 'stone ground flour',
+  'organic flour', 'bromated flour', 'patent flour', 'high gluten flour',
+  
+  // Barley and barley derivatives
+  'barley', 'hordeum', 'barley flour', 'barley malt', 'barley extract', 'barley grass',
+  'pearl barley', 'hulled barley', 'pot barley', 'scotch barley', 'barley flakes',
+  'barley meal', 'malted barley', 'barley syrup', 'barley malt syrup',
+  
+  // Rye and rye derivatives
+  'rye', 'secale', 'rye flour', 'rye bread', 'rye meal', 'rye flakes', 'rye berries',
+  'pumpernickel', 'dark rye', 'light rye', 'medium rye', 'whole rye',
+  
+  // Malt and malt derivatives
+  'malt', 'malted', 'malt extract', 'malt flavoring', 'malt syrup', 'malt vinegar',
+  'malted milk', 'malted barley flour', 'diastatic malt', 'non-diastatic malt',
+  'malted wheat', 'malted grain', 'malt powder', 'liquid malt extract',
+  'dry malt extract', 'barley malt extract', 'wheat malt extract',
+  
+  // Ancient grains (gluten-containing)
+  'spelt', 'triticum spelta', 'dinkel', 'farro', 'triticum dicoccum', 'emmer',
+  'einkorn', 'triticum monococcum', 'kamut', 'triticum turgidum', 'khorasan wheat',
+  'triticale', 'triticosecale',
+  
+  // Processed wheat products
+  'bulgur', 'bulgar', 'burghul', 'cracked wheat', 'couscous', 'seitan', 'wheat meat',
+  'fu', 'gluten flour', 'textured wheat protein', 'hydrolyzed wheat protein',
+  'wheat protein isolate', 'wheat amino acids', 'wheat peptides',
+  
+  // Fermentation and brewing ingredients
+  'brewer\'s yeast', 'brewers yeast', 'nutritional yeast', 'yeast extract',
+  'autolyzed yeast', 'torula yeast', 'beer', 'ale', 'lager', 'stout', 'porter',
+  'whiskey', 'whisky', 'bourbon', 'scotch', 'rye whiskey', 'wheat beer',
+  
+  // Starches and thickeners (wheat-based)
+  'wheat starch', 'modified wheat starch', 'food starch', 'modified food starch',
+  'starch', 'cereal starch', 'vegetable starch', 'edible starch',
+  
+  // Protein derivatives
+  'gluten', 'wheat gluten', 'vital gluten', 'seitan', 'wheat protein',
+  'hydrolyzed vegetable protein', 'hydrolyzed plant protein', 'textured vegetable protein',
+  'vegetable protein', 'plant protein', 'protein isolate',
+  
+  // Oats (often cross-contaminated)
+  'oats', 'oat', 'oat flour', 'oat bran', 'oat meal', 'oatmeal', 'rolled oats',
+  'steel cut oats', 'quick oats', 'instant oats', 'oat fiber', 'oat protein',
+  
+  // Bread and baked goods ingredients
+  'bread', 'breadcrumbs', 'bread crumbs', 'panko', 'croutons', 'stuffing',
+  'dressing', 'matzo', 'matzah', 'matza', 'communion wafer', 'wafer',
+  'graham', 'graham crackers', 'digestive biscuits',
+  
+  // Pasta and noodles
+  'pasta', 'noodles', 'spaghetti', 'macaroni', 'linguine', 'fettuccine',
+  'penne', 'rigatoni', 'fusilli', 'orzo', 'ramen', 'udon', 'soba',
+  'egg noodles', 'wheat noodles', 'semolina pasta',
+  
+  // Additives and preservatives
+  'maltodextrin', 'dextrin', 'cyclodextrin', 'wheat dextrin', 'maltose',
+  'glucose syrup', 'wheat glucose', 'caramel coloring', 'caramel color',
+  'brown rice syrup', 'rice syrup', 'natural flavor', 'artificial flavor',
+  
+  // International and specialty ingredients
+  'atta', 'maida', 'sooji', 'suji', 'dalia', 'lapsi', 'upma', 'vermicelli',
+  'sevai', 'shemai', 'bihun', 'mee hoon', 'som tam', 'pad thai sauce',
+  'hoisin sauce', 'oyster sauce', 'black bean sauce', 'soy sauce',
+  'shoyu', 'tamari', 'miso', 'tempura batter', 'panko breadcrumbs',
+  
+  // Cereal and breakfast ingredients
+  'cereal', 'muesli', 'granola', 'wheat flakes', 'bran flakes', 'wheat biscuits',
+  'shredded wheat', 'wheat squares', 'puffed wheat', 'wheat germ oil',
+  
+  // Thickening and binding agents
+  'wheat binder', 'cereal binder', 'vegetable gum', 'wheat fiber',
+  'cellulose', 'microcrystalline cellulose', 'carboxymethyl cellulose',
+  
+  // Less obvious sources
+  'communion bread', 'eucharist', 'host', 'prescription medication',
+  'vitamin', 'supplement', 'pharmaceutical glaze', 'tablet coating',
+  'capsule', 'liquid medication', 'cough syrup', 'lozenge',
+  
+  // Cross-contamination prone
+  'shared facility', 'may contain wheat', 'processed in facility', 'same equipment'
 ];
 
-// Ambiguous ingredients that may contain gluten
+// Comprehensive list of ambiguous ingredients that may contain gluten
 const AMBIGUOUS_INGREDIENTS = [
-  'natural flavoring', 'artificial flavoring', 'modified starch', 'dextrin',
-  'caramel color', 'soy sauce', 'teriyaki sauce', 'worcestershire sauce',
-  'bouillon', 'broth', 'stock', 'soup base', 'seasoning', 'spice blend',
-  'food starch', 'starch', 'mono and diglycerides', 'lecithin'
+  // Flavorings and extracts
+  'natural flavoring', 'natural flavor', 'artificial flavoring', 'artificial flavor',
+  'natural and artificial flavoring', 'flavor', 'flavoring', 'vanilla extract',
+  'almond extract', 'lemon extract', 'rum extract', 'brandy extract',
+  'imitation vanilla', 'artificial vanilla', 'vanilla flavoring',
+  
+  // Starches (source unclear)
+  'modified starch', 'modified food starch', 'food starch', 'starch',
+  'vegetable starch', 'plant starch', 'cereal starch', 'edible starch',
+  'pregelatinized starch', 'corn starch', 'potato starch', 'tapioca starch',
+  'rice starch', 'arrowroot starch', 'cassava starch',
+  
+  // Dextrin and maltodextrin (can be from wheat)
+  'dextrin', 'maltodextrin', 'wheat dextrin', 'corn dextrin', 'potato dextrin',
+  'tapioca dextrin', 'cyclodextrin', 'resistant dextrin', 'fibersol',
+  
+  // Sauces and condiments
+  'soy sauce', 'tamari', 'shoyu', 'teriyaki sauce', 'worcestershire sauce',
+  'hoisin sauce', 'oyster sauce', 'fish sauce', 'black bean sauce',
+  'brown sauce', 'steak sauce', 'barbecue sauce', 'marinara sauce',
+  'pasta sauce', 'pizza sauce', 'alfredo sauce', 'pesto sauce',
+  'salad dressing', 'ranch dressing', 'italian dressing', 'caesar dressing',
+  
+  // Broths and stocks
+  'bouillon', 'broth', 'stock', 'soup base', 'chicken broth', 'beef broth',
+  'vegetable broth', 'bone broth', 'consomme', 'demi-glace',
+  'gravy', 'sauce mix', 'seasoning packet', 'soup mix',
+  
+  // Seasonings and spice blends
+  'seasoning', 'spice blend', 'spice mix', 'herb blend', 'curry powder',
+  'garam masala', 'chinese five spice', 'italian seasoning', 'poultry seasoning',
+  'taco seasoning', 'chili powder', 'onion powder', 'garlic powder',
+  'celery salt', 'seasoned salt', 'meat tenderizer', 'flavor enhancer',
+  
+  // Protein sources (processing unclear)
+  'hydrolyzed vegetable protein', 'hydrolyzed plant protein', 'vegetable protein',
+  'plant protein', 'protein isolate', 'protein concentrate', 'textured protein',
+  'soy protein', 'pea protein', 'rice protein', 'hemp protein',
+  'autolyzed yeast extract', 'yeast extract', 'nutritional yeast',
+  
+  // Emulsifiers and stabilizers
+  'mono and diglycerides', 'monoglycerides', 'diglycerides', 'lecithin',
+  'soy lecithin', 'sunflower lecithin', 'polysorbate 80', 'polysorbate 60',
+  'carrageenan', 'xanthan gum', 'guar gum', 'locust bean gum',
+  'agar', 'pectin', 'gellan gum', 'cellulose gum',
+  
+  // Coloring agents
+  'caramel color', 'caramel coloring', 'caramel', 'natural color',
+  'artificial color', 'annatto', 'beta carotene', 'turmeric extract',
+  'paprika extract', 'natural coloring', 'color added',
+  
+  // Sweeteners and syrups
+  'glucose syrup', 'corn syrup', 'high fructose corn syrup', 'rice syrup',
+  'brown rice syrup', 'barley malt syrup', 'wheat syrup', 'malt syrup',
+  'golden syrup', 'inverted sugar', 'dextrose', 'maltose',
+  
+  // Vinegars (some may contain gluten)
+  'malt vinegar', 'spirit vinegar', 'distilled vinegar', 'grain vinegar',
+  'white vinegar', 'flavored vinegar', 'balsamic vinegar', 'wine vinegar',
+  
+  // Alcoholic beverages and extracts
+  'beer', 'ale', 'lager', 'stout', 'porter', 'wheat beer', 'barley wine',
+  'malt beverage', 'flavored malt beverage', 'wine', 'cooking wine',
+  'sherry', 'port', 'vermouth', 'sake', 'mirin', 'cooking sake',
+  
+  // Processed meats and seafood
+  'sausage', 'hot dog', 'frankfurter', 'bratwurst', 'kielbasa', 'pepperoni',
+  'salami', 'bologna', 'lunch meat', 'deli meat', 'processed meat',
+  'meat substitute', 'veggie burger', 'veggie sausage', 'imitation crab',
+  'surimi', 'fish cake', 'kamaboko', 'tempura',
+  
+  // Dairy and dairy alternatives
+  'processed cheese', 'cheese spread', 'cheese sauce', 'blue cheese',
+  'roquefort', 'cottage cheese', 'cream cheese', 'sour cream',
+  'yogurt', 'flavored yogurt', 'ice cream', 'frozen yogurt',
+  'non-dairy creamer', 'coffee creamer', 'whipped topping',
+  
+  // Baking and confectionery
+  'baking powder', 'baking soda', 'cream of tartar', 'vanilla powder',
+  'cocoa powder', 'chocolate', 'chocolate chips', 'candy',
+  'licorice', 'gummy candy', 'hard candy', 'marshmallows',
+  'frosting', 'icing', 'cake mix', 'cookie mix', 'brownie mix',
+  
+  // Supplements and vitamins
+  'vitamin', 'mineral supplement', 'multivitamin', 'protein powder',
+  'meal replacement', 'energy bar', 'granola bar', 'nutrition bar',
+  'probiotic', 'prebiotic', 'fiber supplement', 'digestive enzyme',
+  
+  // Medications and health products
+  'prescription medication', 'over-the-counter medication', 'cough syrup',
+  'liquid medication', 'tablet coating', 'capsule', 'lozenge',
+  'antacid', 'pain reliever', 'cold medicine', 'allergy medicine',
+  
+  // Restaurant and fast food items
+  'breading', 'batter', 'coating', 'marinade', 'rub', 'glaze',
+  'stuffing', 'filling', 'crust', 'pie crust', 'pizza crust',
+  'bread bowl', 'wrap', 'tortilla', 'taco shell', 'nacho cheese',
+  
+  // Asian cuisine ingredients
+  'miso', 'tempura batter', 'panko', 'wasabi', 'ponzu', 'tonkatsu sauce',
+  'okonomiyaki sauce', 'yakisoba sauce', 'udon soup', 'ramen broth',
+  'dumplings', 'gyoza', 'won ton', 'spring roll', 'egg roll',
+  
+  // Processed and convenience foods
+  'instant soup', 'cup noodles', 'ramen noodles', 'mac and cheese',
+  'frozen dinner', 'tv dinner', 'microwave meal', 'canned soup',
+  'soup mix', 'gravy mix', 'sauce packet', 'seasoning packet',
+  
+  // Cosmetics and personal care (ingestion risk)
+  'lipstick', 'lip balm', 'lip gloss', 'toothpaste', 'mouthwash',
+  'lip treatment', 'cosmetic', 'makeup', 'personal care product',
+  
+  // Cross-contamination warnings
+  'may contain', 'processed in facility', 'manufactured on equipment',
+  'shared equipment', 'same facility', 'cross contamination possible',
+  'not certified gluten-free', 'contains traces'
 ];
 
 // Common dishes and their typical ingredients for gluten analysis
