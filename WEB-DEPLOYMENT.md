@@ -2,6 +2,8 @@
 
 Your Expo app is now configured for static web deployment! Here are your deployment options:
 
+**Last updated:** August 3, 2025
+
 ## 🚀 Quick Deploy Options
 
 ### Option 1: GitHub Pages (Automated) ⭐ **RECOMMENDED**
