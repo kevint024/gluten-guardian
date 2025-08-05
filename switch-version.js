@@ -7,6 +7,7 @@ const path = require('path');
 const mainAppPath = path.join(__dirname, 'App.js');
 const cameraAppPath = path.join(__dirname, 'App-Camera.js');
 const simpleAppPath = path.join(__dirname, 'App-Simple.js');
+const webAppPath = path.join(__dirname, 'App-Web.js');
 const indexPath = path.join(__dirname, 'index.js');
 
 // Check which version is currently active
@@ -17,6 +18,8 @@ function getCurrentVersion() {
       return 'camera';
     } else if (indexContent.includes("from './App-Simple")) {
       return 'simple';
+    } else if (indexContent.includes("from './App-Web")) {
+      return 'web';
     } else {
       return 'main';
     }
@@ -38,6 +41,10 @@ function switchToVersion(version) {
     case 'simple':
       appFile = './App-Simple';
       versionName = 'Simple Version (No Camera)';
+      break;
+    case 'web':
+      appFile = './App-Web';
+      versionName = 'Web Optimized Version';
       break;
     case 'main':
     default:
@@ -75,7 +82,8 @@ function main() {
     console.log('Available versions:');
     console.log('  main   - Main version (manual barcode entry)');
     console.log('  camera - Camera test version (with barcode scanning)');
-    console.log('  simple - Simple version (backup, no camera)\n');
+    console.log('  simple - Simple version (backup, no camera)');
+    console.log('  web    - Web optimized version (for static deployment)\n');
     console.log(`Current version: ${getCurrentVersion()}\n`);
     console.log('Example: node switch-version.js camera');
     return;
@@ -89,8 +97,8 @@ function main() {
     return;
   }
   
-  if (!['main', 'camera', 'simple'].includes(command)) {
-    console.error('❌ Invalid version. Use: main, camera, or simple');
+  if (!['main', 'camera', 'simple', 'web'].includes(command)) {
+    console.error('❌ Invalid version. Use: main, camera, simple, or web');
     return;
   }
   
