@@ -26,6 +26,21 @@ if (!fs.existsSync(nojekyllPath)) {
   console.log('✅ .nojekyll file already exists');
 }
 
+// Fix absolute paths in index.html for GitHub Pages
+const indexPath = path.join(distDir, 'index.html');
+if (fs.existsSync(indexPath)) {
+  let indexContent = fs.readFileSync(indexPath, 'utf8');
+  
+  // Convert absolute paths to relative paths
+  indexContent = indexContent.replace(/href="\/favicon\.ico"/g, 'href="./favicon.ico"');
+  indexContent = indexContent.replace(/src="\/_expo\//g, 'src="./_expo/');
+  
+  fs.writeFileSync(indexPath, indexContent);
+  console.log('✅ Fixed paths in index.html for GitHub Pages');
+} else {
+  console.log('❌ index.html not found');
+}
+
 // Check for required files
 const requiredFiles = ['index.html', 'favicon.ico'];
 const missingFiles = requiredFiles.filter(file => 
