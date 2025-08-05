@@ -38,6 +38,7 @@ jobs:
       run: |
         cd gluten-guardian
         npx expo export --platform web
+        node fix-paths.js
         
     - name: Setup Pages
       uses: actions/configure-pages@v4
