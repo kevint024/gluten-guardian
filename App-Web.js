@@ -182,13 +182,28 @@ export default function App() {
   const [isScanning, setIsScanning] = useState(false);
   const [cameraError, setCameraError] = useState(null);
   const [scannedBarcode, setScannedBarcode] = useState('');
+  const [lastErrorTime, setLastErrorTime] = useState(0); // Prevent error spam
   const scannerRef = useRef(null);
 
   useEffect(() => {
     loadFavorites();
     loadCache();
     
-    // Cleanup scanner when component unmounts
+    // Auto-start camera when on camera screen
+    if (currentScreen === 'camera' && !isScanning && !cameraError) {
+      startScanner();
+    }
+    
+    // Cleanup scanner when component unmounts or leaving camera screen
+    return () => {
+      if (currentScreen !== 'camera') {
+        stopScanner();
+      }
+    };
+  }, [currentScreen]);
+
+  useEffect(() => {
+    // Cleanup on component unmount
     return () => {
       stopScanner();
     };
@@ -205,15 +220,6 @@ export default function App() {
       setCameraError(null);
       setScannedBarcode('');
 
-      // Request camera permission
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { 
-          facingMode: 'environment', // Use back camera if available
-          width: { ideal: 640 },
-          height: { ideal: 480 }
-        } 
-      });
-
       // Initialize Quagga scanner
       Quagga.init({
         inputStream: {
@@ -221,9 +227,9 @@ export default function App() {
           type: 'LiveStream',
           target: scannerRef.current,
           constraints: {
-            width: 640,
-            height: 480,
-            facingMode: 'environment'
+            width: { ideal: 640, min: 320 },
+            height: { ideal: 480, min: 240 },
+            facingMode: 'environment' // Use back camera if available
           }
         },
         decoder: {
@@ -232,22 +238,21 @@ export default function App() {
             'ean_reader',
             'ean_8_reader',
             'code_39_reader',
-            'code_39_vin_reader',
-            'codabar_reader',
             'upc_reader',
-            'upc_e_reader',
-            'i2of5_reader'
+            'upc_e_reader'
           ]
         },
         locate: true,
         locator: {
           halfSample: true,
           patchSize: 'medium'
-        }
+        },
+        numOfWorkers: 1,
+        frequency: 10
       }, (err) => {
         if (err) {
           console.error('Quagga initialization error:', err);
-          setCameraError('Failed to initialize camera scanner');
+          setCameraError('Failed to initialize camera scanner. Please try manual barcode entry.');
           setIsScanning(false);
           return;
         }
@@ -258,20 +263,24 @@ export default function App() {
         // Listen for barcode detection
         Quagga.onDetected((result) => {
           const code = result.codeResult.code;
-          if (code && code.length >= 8) { // Valid barcode length
+          if (code && code.length >= 8 && code.length <= 18) { // Valid barcode length
             setScannedBarcode(code);
-            stopScanner();
             
             // Auto-analyze the scanned barcode
             fetchProductData(code);
             switchToScreen('result');
+            
+            // Stop scanner after successful scan
+            setTimeout(() => {
+              stopScanner();
+            }, 100);
           }
         });
       });
 
     } catch (error) {
       console.error('Camera access error:', error);
-      setCameraError('Camera access denied or not available');
+      setCameraError('Camera access denied or not available. Please allow camera access or use manual barcode entry.');
       setIsScanning(false);
     }
   };
@@ -468,13 +477,22 @@ export default function App() {
         const result = analyzeIngredients(product.ingredients_text);
         setAnalysisResult(result);
       } else {
-        webAlert('Product Not Found', 'This product is not in the Open Food Facts database.');
+        // Prevent spam by checking time since last error
+        const now = Date.now();
+        if (now - lastErrorTime > 3000) { // 3 second cooldown
+          setLastErrorTime(now);
+          webAlert('Product Not Found', 'This product is not in the Open Food Facts database. Try entering the barcode manually.');
+        }
         setProductData(null);
         setAnalysisResult(null);
       }
     } catch (error) {
       console.error('Error fetching product data:', error);
-      webAlert('Error', 'Failed to fetch product information. Please check your internet connection.');
+      const now = Date.now();
+      if (now - lastErrorTime > 3000) { // 3 second cooldown
+        setLastErrorTime(now);
+        webAlert('Error', 'Failed to fetch product information. Please check your internet connection.');
+      }
       setProductData(null);
       setAnalysisResult(null);
     } finally {
@@ -540,20 +558,77 @@ export default function App() {
     setSearchResults([]);
 
     try {
-      // Search local database first
+      let searchResults = [];
+
+      // 1. Search local database first
       const localResults = Object.keys(DISH_DATABASE)
         .filter(dish => dish.toLowerCase().includes(searchTerm.toLowerCase()))
         .map(dish => ({
           name: dish,
           ingredients: DISH_DATABASE[dish].ingredients,
           status: DISH_DATABASE[dish].status,
-          description: DISH_DATABASE[dish].description
+          description: DISH_DATABASE[dish].description,
+          source: 'Local Database'
         }));
 
-      validateAndSetSearchResults(localResults, 'dish');
+      searchResults = [...localResults];
+
+      // 2. Try MealDB API (Free, no key required)
+      if (searchResults.length < 4) {
+        try {
+          console.log('🔍 Searching MealDB for:', searchTerm);
+          const mealDBResponse = await fetch(`https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(searchTerm)}`);
+          const mealDBData = await mealDBResponse.json();
+          
+          if (mealDBData.meals && mealDBData.meals.length > 0) {
+            console.log(`✅ MealDB found ${mealDBData.meals.length} recipes`);
+            
+            const mealDBResults = mealDBData.meals.slice(0, 4).map(meal => {
+              const ingredients = [];
+              for (let i = 1; i <= 20; i++) {
+                const ingredient = meal[`strIngredient${i}`];
+                if (ingredient && ingredient.trim()) {
+                  ingredients.push(ingredient.trim().toLowerCase());
+                }
+              }
+              
+              const ingredientsText = ingredients.join(', ');
+              const analysis = analyzeIngredients(ingredientsText);
+              
+              return {
+                name: meal.strMeal,
+                ingredients: ingredientsText,
+                status: analysis.status,
+                description: `${meal.strCategory} dish from ${meal.strArea}`,
+                source: 'MealDB',
+                image: meal.strMealThumb
+              };
+            });
+            
+            searchResults = [...searchResults, ...mealDBResults.filter(result => 
+              result.ingredients && result.ingredients.trim() && 
+              !searchResults.some(existing => existing.name.toLowerCase() === result.name.toLowerCase())
+            )];
+          }
+        } catch (mealDBError) {
+          console.log('MealDB API not available:', mealDBError.message);
+        }
+      }
+
+      // 3. Fallback: Add some common dishes if no results found
+      if (searchResults.length === 0) {
+        const fallbackDishes = [
+          { name: 'No results found', ingredients: '', status: 'unknown', description: 'Try a different search term' }
+        ];
+        searchResults = fallbackDishes;
+      }
+
+      validateAndSetSearchResults(searchResults.slice(0, 8), 'dish');
+      
     } catch (error) {
       console.error('Error searching dishes:', error);
       validateAndSetSearchResults([], 'dish');
+      webAlert('Error', 'Failed to search for dishes. Please check your internet connection.');
     } finally {
       setLoading(false);
     }
@@ -591,62 +666,76 @@ export default function App() {
 
   const renderHomeScreen = () => (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      <StatusBar style="auto" />
       <View style={styles.header}>
         <Text style={styles.title}>🛡️ Gluten Guardian</Text>
-        <Text style={styles.subtitle}>Protecting you from gluten, one scan at a time</Text>
-        {Platform.OS === 'web' && (
-          <Text style={styles.webBadge}>🌐 Web Version</Text>
-        )}
+        <Text style={styles.subtitle}>Your gluten-free companion</Text>
+        <Text style={styles.note}>🌐 Web Version - Camera scanning with fallback to manual entry</Text>
       </View>
-
-      <View style={styles.menuContainer}>
-        <TouchableOpacity 
-          style={[styles.menuButton, styles.cameraButton]} 
+      
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity
+          style={[styles.button, styles.primaryButton]}
           onPress={() => switchToScreen('camera')}
         >
-          <Text style={styles.menuButtonText}>📷 Scan Barcode</Text>
-          <Text style={styles.menuButtonSubtext}>Use camera to scan barcodes</Text>
+          <Text style={styles.buttonText}>📷 Scan Barcode</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.menuButton, styles.barcodeButton]} 
+        
+        <TouchableOpacity
+          style={[styles.button, styles.secondaryButton]}
           onPress={() => switchToScreen('manualBarcode')}
         >
-          <Text style={styles.menuButtonText}>🔍 Manual Barcode</Text>
-          <Text style={styles.menuButtonSubtext}>Enter barcode manually</Text>
+          <Text style={[styles.buttonText, styles.secondaryButtonText]}>🔢 Enter Barcode</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.menuButton, styles.manualButton]} 
-          onPress={() => switchToScreen('manual')}
-        >
-          <Text style={styles.menuButtonText}>📝 Manual Check</Text>
-          <Text style={styles.menuButtonSubtext}>Enter ingredients manually</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.menuButton, styles.searchButton]} 
+        
+        <TouchableOpacity
+          style={[styles.button, styles.secondaryButton]}
           onPress={() => switchToScreen('searchFood')}
         >
-          <Text style={styles.menuButtonText}>🍔 Search Products</Text>
-          <Text style={styles.menuButtonSubtext}>Find food products by name</Text>
+          <Text style={[styles.buttonText, styles.secondaryButtonText]}>🔍 Search Food Products</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.menuButton, styles.dishButton]} 
+        
+        <TouchableOpacity
+          style={[styles.button, styles.secondaryButton]}
           onPress={() => switchToScreen('searchDish')}
         >
-          <Text style={styles.menuButtonText}>🍝 Search Dishes</Text>
-          <Text style={styles.menuButtonSubtext}>Find common dishes and recipes</Text>
+          <Text style={[styles.buttonText, styles.secondaryButtonText]}>�️ Search Dishes</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.menuButton, styles.favoritesButton]} 
+        
+        <TouchableOpacity
+          style={[styles.button, styles.secondaryButton]}
+          onPress={() => switchToScreen('manual')}
+        >
+          <Text style={[styles.buttonText, styles.secondaryButtonText]}>✏️ Manual Check</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={[styles.button, styles.tertiaryButton]}
           onPress={() => switchToScreen('favorites')}
         >
-          <Text style={styles.menuButtonText}>⭐ Favorites</Text>
-          <Text style={styles.menuButtonSubtext}>Your saved items ({favorites.length})</Text>
+          <Text style={[styles.buttonText, styles.tertiaryButtonText]}>⭐ Favorites ({favorites.length})</Text>
+        </TouchableOpacity>
+      </View>
+      
+      <View style={styles.testSection}>
+        <Text style={styles.testTitle}>🧪 Quick Test Examples:</Text>
+        <TouchableOpacity
+          style={styles.testButton}
+          onPress={() => {
+            setBarcodeInput('3017620422003');
+            switchToScreen('manualBarcode');
+          }}
+        >
+          <Text style={styles.testButtonText}>🍫 Test Nutella (Contains Gluten)</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={styles.testButton}
+          onPress={() => {
+            setManualIngredients('rice, water, salt');
+            switchToScreen('manual');
+          }}
+        >
+          <Text style={styles.testButtonText}>🍚 Test Rice (Gluten-Free)</Text>
         </TouchableOpacity>
       </View>
 
@@ -662,80 +751,57 @@ export default function App() {
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <View style={styles.header}>
         <Text style={styles.title}>📷 Camera Scanner</Text>
-        <Text style={styles.subtitle}>Point camera at barcode to scan</Text>
+        <Text style={styles.subtitle}>Point camera at barcode to scan automatically</Text>
       </View>
 
       <View style={styles.cameraContainer}>
         {cameraError ? (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>❌ {cameraError}</Text>
-            <Text style={styles.errorSubtext}>
-              Try manual barcode entry instead, or check camera permissions.
-            </Text>
             
             <TouchableOpacity 
               style={[styles.button, styles.manualButton]} 
               onPress={() => switchToScreen('manualBarcode')}
             >
-              <Text style={styles.buttonText}>Manual Entry Instead</Text>
+              <Text style={styles.buttonText}>📝 Manual Barcode Entry</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <>
-            <View style={styles.scannerContainer}>
-              <div 
-                ref={scannerRef} 
-                style={{
-                  width: '100%',
-                  maxWidth: '640px',
-                  height: '480px',
-                  border: '2px solid #4CAF50',
-                  borderRadius: '8px',
-                  overflow: 'hidden',
-                  position: 'relative',
-                  backgroundColor: '#000'
-                }}
-              />
-              
-              {isScanning && (
-                <View style={styles.scanningOverlay}>
-                  <Text style={styles.scanningText}>🔍 Scanning for barcodes...</Text>
-                  <Text style={styles.scanningSubtext}>Position barcode in camera view</Text>
-                </View>
-              )}
-              
-              {scannedBarcode && (
-                <View style={styles.scannedContainer}>
-                  <Text style={styles.scannedText}>✅ Scanned: {scannedBarcode}</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.cameraControls}>
-              {!isScanning ? (
-                <TouchableOpacity 
-                  style={[styles.button, styles.startScanButton]} 
-                  onPress={startScanner}
-                >
-                  <Text style={styles.buttonText}>📷 Start Camera</Text>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity 
-                  style={[styles.button, styles.stopScanButton]} 
-                  onPress={stopScanner}
-                >
-                  <Text style={styles.buttonText}>⏹️ Stop Scanning</Text>
-                </TouchableOpacity>
-              )}
-              
-              <TouchableOpacity 
-                style={[styles.button, styles.manualFallbackButton]} 
-                onPress={() => switchToScreen('manualBarcode')}
-              >
-                <Text style={styles.buttonText}>Manual Entry</Text>
-              </TouchableOpacity>
-            </View>
-          </>
+          <View style={styles.scannerContainer}>
+            <div 
+              ref={scannerRef} 
+              style={{
+                width: '100%',
+                maxWidth: '640px',
+                height: '480px',
+                border: '2px solid #4CAF50',
+                borderRadius: '8px',
+                overflow: 'hidden',
+                position: 'relative',
+                backgroundColor: '#000'
+              }}
+            />
+            
+            {isScanning && (
+              <View style={styles.scanningOverlay}>
+                <Text style={styles.scanningText}>🔍 Scanning for barcodes...</Text>
+                <Text style={styles.scanningSubtext}>Hold barcode steady in camera view</Text>
+              </View>
+            )}
+            
+            {scannedBarcode && (
+              <View style={styles.scannedContainer}>
+                <Text style={styles.scannedText}>✅ Scanned: {scannedBarcode}</Text>
+              </View>
+            )}
+            
+            <TouchableOpacity 
+              style={[styles.button, styles.manualFallbackButton]} 
+              onPress={() => switchToScreen('manualBarcode')}
+            >
+              <Text style={styles.buttonText}>📝 Manual Entry Instead</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         <TouchableOpacity 
@@ -1555,6 +1621,72 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
     fontWeight: 'bold',
+  },
+
+  // Home screen styles to match original
+  note: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 5,
+  },
+
+  buttonContainer: {
+    paddingHorizontal: 20,
+    gap: 15,
+  },
+
+  primaryButton: {
+    backgroundColor: '#2196F3',
+  },
+
+  secondaryButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#2196F3',
+  },
+
+  tertiaryButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: '#FF9800',
+  },
+
+  secondaryButtonText: {
+    color: '#2196F3',
+  },
+
+  tertiaryButtonText: {
+    color: '#FF9800',
+  },
+
+  testSection: {
+    paddingHorizontal: 20,
+    marginTop: 30,
+    marginBottom: 20,
+  },
+
+  testTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 15,
+    textAlign: 'center',
+  },
+
+  testButton: {
+    backgroundColor: '#f0f0f0',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+
+  testButtonText: {
+    fontSize: 14,
+    color: '#333',
+    textAlign: 'center',
   },
 
   footer: {
