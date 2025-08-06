@@ -371,9 +371,17 @@ export default function App() {
   };
 
   const switchToScreen = (screenName) => {
+    console.log(`🔄 Switching from '${currentScreen}' to '${screenName}'`);
+    
     // Stop scanner when leaving camera screen
     if (currentScreen === 'camera' && screenName !== 'camera') {
       stopScanner();
+    }
+    
+    // Clear analysis data when going to home or other non-result screens
+    if (screenName !== 'result') {
+      setAnalysisResult(null);
+      setProductData(null);
     }
     
     setSearchResults([]);
@@ -393,6 +401,7 @@ export default function App() {
     }
     
     setCurrentScreen(screenName);
+    console.log(`✅ Screen switched to '${screenName}'`);
   };
 
   const validateAndSetSearchResults = (results, resultType) => {
@@ -1122,7 +1131,10 @@ export default function App() {
           <Text style={styles.errorText}>No analysis data available</Text>
           <TouchableOpacity 
             style={[styles.button, styles.backButton]} 
-            onPress={() => switchToScreen('home')}
+            onPress={() => {
+              console.log('🔙 Back to Menu button pressed (no data)');
+              setTimeout(() => switchToScreen('home'), 50);
+            }}
           >
             <Text style={styles.buttonText}>← Back to Menu</Text>
           </TouchableOpacity>
@@ -1212,7 +1224,10 @@ export default function App() {
 
             <TouchableOpacity 
               style={[styles.button, styles.backButton]} 
-              onPress={() => switchToScreen('home')}
+              onPress={() => {
+                console.log('🔙 Back to Menu button pressed');
+                setTimeout(() => switchToScreen('home'), 50);
+              }}
             >
               <Text style={styles.buttonText}>← Back to Menu</Text>
             </TouchableOpacity>
