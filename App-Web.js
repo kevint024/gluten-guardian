@@ -17,8 +17,10 @@ let Quagga;
 if (Platform.OS === 'web') {
   try {
     Quagga = require('quagga');
+    console.log('📦 QuaggaJS loaded successfully');
   } catch (e) {
-    console.log('Quagga not available for barcode scanning');
+    console.error('❌ QuaggaJS not available:', e);
+    console.log('Installing QuaggaJS: npm install quagga');
   }
 }
 
@@ -190,13 +192,19 @@ export default function App() {
     loadCache();
     
     // Auto-start camera when on camera screen
+    console.log('📱 Screen changed to:', currentScreen);
+    console.log('🎥 Is scanning:', isScanning);
+    console.log('❌ Camera error:', cameraError);
+    
     if (currentScreen === 'camera' && !isScanning && !cameraError) {
-      startScanner();
+      console.log('🚀 Auto-starting camera scanner...');
+      setTimeout(() => startScanner(), 100); // Small delay to ensure DOM is ready
     }
     
     // Cleanup scanner when component unmounts or leaving camera screen
     return () => {
       if (currentScreen !== 'camera') {
+        console.log('🛑 Leaving camera screen, stopping scanner...');
         stopScanner();
       }
     };
@@ -220,16 +228,36 @@ export default function App() {
       setCameraError(null);
       setScannedBarcode('');
 
-      // Initialize Quagga scanner
+      console.log('📦 QuaggaJS loaded successfully');
+      console.log('🔄 Starting camera scanner...');
+
+      // Stop any existing scanner first
+      try {
+        Quagga.stop();
+      } catch (e) {
+        // Ignore stop errors
+      }
+      
+      // Initialize Quagga scanner with better configuration
+      console.log('🎥 Initializing Quagga scanner...');
+      console.log('📍 Scanner target:', scannerRef.current);
+      
+      if (!scannerRef.current) {
+        setCameraError('Scanner element not ready. Please try again.');
+        setIsScanning(false);
+        return;
+      }
+
       Quagga.init({
         inputStream: {
           name: 'Live',
           type: 'LiveStream',
           target: scannerRef.current,
           constraints: {
-            width: { ideal: 640, min: 320 },
-            height: { ideal: 480, min: 240 },
-            facingMode: 'environment' // Use back camera if available
+            width: { ideal: 1280, min: 640 },
+            height: { ideal: 720, min: 480 },
+            facingMode: 'environment', // Use back camera if available
+            aspectRatio: { ideal: 1.7777778 }
           }
         },
         decoder: {
@@ -239,58 +267,107 @@ export default function App() {
             'ean_8_reader',
             'code_39_reader',
             'upc_reader',
-            'upc_e_reader'
-          ]
+            'upc_e_reader',
+            'i2of5_reader'
+          ],
+          debug: {
+            drawBoundingBox: true,
+            showFrequency: true,
+            drawScanline: true,
+            showPattern: true
+          }
         },
         locate: true,
         locator: {
-          halfSample: true,
-          patchSize: 'medium'
+          patchSize: 'large',
+          halfSample: true
         },
-        numOfWorkers: 1,
-        frequency: 10
+        numOfWorkers: navigator.hardwareConcurrency || 4,
+        frequency: 10,
+        debug: false
       }, (err) => {
         if (err) {
           console.error('Quagga initialization error:', err);
-          setCameraError('Failed to initialize camera scanner. Please try manual barcode entry.');
+          
+          // Check for specific permission-related errors
+          if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError' || 
+              err.message.includes('Permission denied') || err.message.includes('permission')) {
+            setCameraError('Camera permissions denied. Please allow camera access and refresh the page.');
+          } else if (err.name === 'NotFoundError' || err.message.includes('not found')) {
+            setCameraError('No camera found. Please connect a camera or use manual barcode entry.');
+          } else if (err.name === 'NotSupportedError') {
+            setCameraError('Camera not supported in this browser. Please use a modern browser.');
+          } else {
+            setCameraError('Failed to initialize camera scanner. Please try manual barcode entry.');
+          }
+          
           setIsScanning(false);
           return;
         }
         
-        // Start scanning
-        Quagga.start();
+        console.log('✅ Quagga initialized successfully');
+        console.log('🔗 Setting up event listeners...');
         
-        // Listen for barcode detection
+        // Remove any existing event listeners
+        Quagga.offDetected();
+        
+        // Add detection event listener
         Quagga.onDetected((result) => {
+          console.log('🔍 Barcode detected:', result);
           const code = result.codeResult.code;
-          if (code && code.length >= 8 && code.length <= 18) { // Valid barcode length
+          console.log('📊 Barcode code:', code);
+          
+          if (code && code.length >= 8 && code.length <= 18) {
+            console.log('✅ Valid barcode detected:', code);
             setScannedBarcode(code);
+            
+            // Stop scanner immediately to prevent multiple detections
+            Quagga.stop();
+            setIsScanning(false);
             
             // Auto-analyze the scanned barcode
             fetchProductData(code);
             switchToScreen('result');
-            
-            // Stop scanner after successful scan
-            setTimeout(() => {
-              stopScanner();
-            }, 100);
           }
         });
+        
+        // Start scanning
+        console.log('🚀 Starting Quagga scanner...');
+        Quagga.start();
+        console.log('🔍 Barcode scanning started successfully');
       });
 
     } catch (error) {
       console.error('Camera access error:', error);
-      setCameraError('Camera access denied or not available. Please allow camera access or use manual barcode entry.');
+      
+      // Handle specific error types
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        setCameraError('Camera permissions denied. Please allow camera access and refresh the page.');
+      } else if (error.name === 'NotFoundError') {
+        setCameraError('No camera found. Please connect a camera or use manual barcode entry.');
+      } else if (error.name === 'NotSupportedError') {
+        setCameraError('Camera not supported in this browser. Please use a modern browser.');
+      } else {
+        setCameraError('Camera access error. Please try manual barcode entry.');
+      }
+      
       setIsScanning(false);
     }
   };
 
   const stopScanner = () => {
-    if (Quagga && isScanning) {
-      Quagga.stop();
-      Quagga.offDetected();
+    console.log('🛑 Stopping barcode scanner');
+    if (Quagga) {
+      try {
+        Quagga.stop();
+        Quagga.offDetected();
+        console.log('✅ Scanner stopped successfully');
+      } catch (error) {
+        console.error('Error stopping scanner:', error);
+      }
     }
     setIsScanning(false);
+    setScannedBarcode('');
   };
 
   const switchToScreen = (screenName) => {
@@ -759,6 +836,26 @@ export default function App() {
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>❌ {cameraError}</Text>
             
+            {cameraError.includes('permissions') && (
+              <View style={styles.permissionGuide}>
+                <Text style={styles.permissionTitle}>🔐 How to enable camera access:</Text>
+                <Text style={styles.permissionStep}>1. Look for the camera icon in your browser's address bar</Text>
+                <Text style={styles.permissionStep}>2. Click it and select "Allow" for camera access</Text>
+                <Text style={styles.permissionStep}>3. Refresh this page and try again</Text>
+                <Text style={styles.permissionStep}>📍 Note: Camera access requires HTTPS or localhost</Text>
+              </View>
+            )}
+            
+            <TouchableOpacity 
+              style={[styles.button, styles.retryButton]} 
+              onPress={() => {
+                setCameraError(null);
+                startScanner();
+              }}
+            >
+              <Text style={styles.buttonText}>🔄 Try Camera Again</Text>
+            </TouchableOpacity>
+            
             <TouchableOpacity 
               style={[styles.button, styles.manualButton]} 
               onPress={() => switchToScreen('manualBarcode')}
@@ -772,8 +869,8 @@ export default function App() {
               ref={scannerRef} 
               style={{
                 width: '100%',
-                maxWidth: '640px',
-                height: '480px',
+                maxWidth: '800px',
+                height: '600px',
                 border: '2px solid #4CAF50',
                 borderRadius: '8px',
                 overflow: 'hidden',
@@ -786,12 +883,14 @@ export default function App() {
               <View style={styles.scanningOverlay}>
                 <Text style={styles.scanningText}>🔍 Scanning for barcodes...</Text>
                 <Text style={styles.scanningSubtext}>Hold barcode steady in camera view</Text>
+                <Text style={styles.scanningSubtext}>Make sure barcode is well-lit and in focus</Text>
               </View>
             )}
             
             {scannedBarcode && (
               <View style={styles.scannedContainer}>
                 <Text style={styles.scannedText}>✅ Scanned: {scannedBarcode}</Text>
+                <Text style={styles.scannedSubtext}>Processing...</Text>
               </View>
             )}
             
@@ -1760,6 +1859,12 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
 
+  scannedSubtext: {
+    color: 'white',
+    fontSize: 12,
+    marginTop: 4,
+  },
+
   cameraControls: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -1792,6 +1897,34 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(244, 67, 54, 0.1)',
     borderRadius: 8,
     marginBottom: 20,
+  },
+
+  permissionGuide: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    padding: 15,
+    borderRadius: 8,
+    marginVertical: 15,
+    alignSelf: 'stretch',
+  },
+
+  permissionTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+
+  permissionStep: {
+    fontSize: 14,
+    color: '#555',
+    marginVertical: 3,
+    paddingLeft: 10,
+  },
+
+  retryButton: {
+    backgroundColor: '#4CAF50',
+    marginTop: 15,
   },
 
   errorSubtext: {
