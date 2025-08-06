@@ -645,8 +645,10 @@ export default function App() {
 
     try {
       let searchResults = [];
+      console.log('🔍 Starting multi-API dish search for:', searchTerm);
 
       // 1. Search local database first
+      console.log('📚 Searching local database...');
       const localResults = Object.keys(DISH_DATABASE)
         .filter(dish => dish.toLowerCase().includes(searchTerm.toLowerCase()))
         .map(dish => ({
@@ -658,6 +660,7 @@ export default function App() {
         }));
 
       searchResults = [...localResults];
+      console.log(`📚 Local database found ${localResults.length} results`);
 
       // 2. Try MealDB API (Free, no key required)
       if (searchResults.length < 4) {
@@ -697,16 +700,105 @@ export default function App() {
             )];
           }
         } catch (mealDBError) {
-          console.log('MealDB API not available:', mealDBError.message);
+          console.log('❌ MealDB API not available:', mealDBError.message);
         }
       }
 
-      // 3. Fallback: Add some common dishes if no results found
+      // 3. Try Tasty API (RapidAPI) if still need more results
+      if (searchResults.length < 6) {
+        try {
+          console.log('🔍 Searching Tasty API for:', searchTerm);
+          const tastyResponse = await fetch(`https://tasty.p.rapidapi.com/recipes/list?from=0&size=4&q=${encodeURIComponent(searchTerm)}`, {
+            method: 'GET',
+            headers: {
+              'X-RapidAPI-Key': 'demo', // Using demo key - may be limited
+              'X-RapidAPI-Host': 'tasty.p.rapidapi.com'
+            }
+          });
+          
+          if (tastyResponse.ok) {
+            const tastyData = await tastyResponse.json();
+            
+            if (tastyData.results && tastyData.results.length > 0) {
+              console.log(`✅ Tasty API found ${tastyData.results.length} recipes`);
+              
+              const tastyResults = tastyData.results.slice(0, 4).map(recipe => {
+                const ingredients = recipe.sections && recipe.sections[0] && recipe.sections[0].components 
+                  ? recipe.sections[0].components.map(comp => comp.ingredient?.name || '').filter(Boolean)
+                  : [];
+                
+                const ingredientsText = ingredients.join(', ').toLowerCase();
+                const analysis = analyzeIngredients(ingredientsText);
+                
+                return {
+                  name: recipe.name,
+                  ingredients: ingredientsText,
+                  status: analysis.status,
+                  description: recipe.description || `Recipe with ${ingredients.length} ingredients`,
+                  source: 'Tasty API',
+                  image: recipe.thumbnail_url
+                };
+              });
+              
+              searchResults = [...searchResults, ...tastyResults.filter(result => 
+                result.ingredients && result.ingredients.trim() && 
+                !searchResults.some(existing => existing.name.toLowerCase() === result.name.toLowerCase())
+              )];
+            }
+          }
+        } catch (tastyError) {
+          console.log('❌ Tasty API not available:', tastyError.message);
+        }
+      }
+
+      // 4. Try Edamam API if still need more results
+      if (searchResults.length < 8) {
+        try {
+          console.log('🔍 Searching Edamam API for:', searchTerm);
+          const edamamResponse = await fetch(`https://api.edamam.com/search?q=${encodeURIComponent(searchTerm)}&app_id=demo&app_key=demo&from=0&to=4`);
+          
+          if (edamamResponse.ok) {
+            const edamamData = await edamamResponse.json();
+            
+            if (edamamData.hits && edamamData.hits.length > 0) {
+              console.log(`✅ Edamam API found ${edamamData.hits.length} recipes`);
+              
+              const edamamResults = edamamData.hits.slice(0, 4).map(hit => {
+                const recipe = hit.recipe;
+                const ingredients = recipe.ingredientLines || [];
+                const ingredientsText = ingredients.join(', ').toLowerCase();
+                const analysis = analyzeIngredients(ingredientsText);
+                
+                return {
+                  name: recipe.label,
+                  ingredients: ingredientsText,
+                  status: analysis.status,
+                  description: `${recipe.cuisineType?.[0] || 'International'} cuisine with ${ingredients.length} ingredients`,
+                  source: 'Edamam API',
+                  image: recipe.image
+                };
+              });
+              
+              searchResults = [...searchResults, ...edamamResults.filter(result => 
+                result.ingredients && result.ingredients.trim() && 
+                !searchResults.some(existing => existing.name.toLowerCase() === result.name.toLowerCase())
+              )];
+            }
+          }
+        } catch (edamamError) {
+          console.log('❌ Edamam API not available:', edamamError.message);
+        }
+      }
+
+      // 5. Fallback: Add some common dishes if no results found
       if (searchResults.length === 0) {
+        console.log('❌ No results from any API, using fallback');
         const fallbackDishes = [
-          { name: 'No results found', ingredients: '', status: 'unknown', description: 'Try a different search term' }
+          { name: 'No results found', ingredients: '', status: 'unknown', description: 'Try a different search term', source: 'Fallback' }
         ];
         searchResults = fallbackDishes;
+      } else {
+        console.log(`✅ Found ${searchResults.length} total results from all sources`);
       }
 
       validateAndSetSearchResults(searchResults.slice(0, 8), 'dish');
