@@ -235,7 +235,18 @@ export default function App() {
       try {
         Quagga.stop();
       } catch (e) {
-        // Ignore stop errors
+        console.log('No existing scanner to stop');
+      }
+      
+      // Check if we're running on HTTPS or localhost
+      const isSecure = window.location.protocol === 'https:' || 
+                      window.location.hostname === 'localhost' || 
+                      window.location.hostname === '127.0.0.1';
+      
+      if (!isSecure) {
+        setCameraError('Camera access requires HTTPS or localhost. Please use a secure connection or try manual barcode entry.');
+        setIsScanning(false);
+        return;
       }
       
       // Initialize Quagga scanner with better configuration
@@ -248,40 +259,68 @@ export default function App() {
         return;
       }
 
+      // Check for camera availability first
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const cameras = devices.filter(device => device.kind === 'videoinput');
+        console.log(`📹 Found ${cameras.length} camera(s)`);
+        
+        if (cameras.length === 0) {
+          setCameraError('No cameras detected. Please connect a camera or use manual barcode entry.');
+          setIsScanning(false);
+          return;
+        }
+      } catch (enumError) {
+        console.warn('Could not enumerate devices:', enumError);
+        // Continue anyway - some browsers don't support enumeration
+      }
+
       Quagga.init({
         inputStream: {
           name: 'Live',
           type: 'LiveStream',
           target: scannerRef.current,
           constraints: {
-            width: { ideal: 1280, min: 640 },
-            height: { ideal: 720, min: 480 },
+            width: { ideal: 1280, min: 320, max: 1920 },
+            height: { ideal: 720, min: 240, max: 1080 },
             facingMode: 'environment',
             aspectRatio: { ideal: 1.7777778 }
           },
           // Focus on center area to reduce false positives and improve speed
-          area: { top: '15%', right: '15%', left: '15%', bottom: '15%' }
+          area: { top: '20%', right: '20%', left: '20%', bottom: '20%' }
         },
         decoder: {
           readers: [
             'ean_reader',
-            'ean_8_reader',
+            'ean_8_reader', 
+            'ean_5_reader',
+            'ean_2_reader',
             'upc_reader',
             'upc_e_reader',
             'code_128_reader',
             'code_39_reader',
+            'code_39_vin_reader',
+            'codabar_reader',
             'i2of5_reader'
           ],
-          debug: false
+          debug: {
+            drawBoundingBox: true,
+            showFrequency: true,
+            drawScanline: true,
+            showPattern: true
+          }
         },
         locate: true,
         locator: {
           patchSize: 'medium',
           halfSample: false
         },
-        numOfWorkers: (typeof Worker !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 0),
-        frequency: 10,
-        debug: false
+        numOfWorkers: (typeof Worker !== 'undefined' ? Math.min(navigator.hardwareConcurrency || 2, 4) : 0),
+        frequency: 5, // Reduced frequency to improve performance
+        debug: {
+          drawBoundingBox: true,
+          drawScanline: true
+        }
       }, (err) => {
         if (err) {
           console.error('Quagga initialization error:', err);
@@ -312,9 +351,11 @@ export default function App() {
         Quagga.onDetected((result) => {
           console.log('🔍 Barcode detected:', result);
           const code = result.codeResult.code;
-          console.log('📊 Barcode code:', code);
+          const confidence = result.codeResult.quality || 0;
+          console.log(`📊 Barcode code: ${code}, confidence: ${confidence}`);
           
-          if (code && code.length >= 8 && code.length <= 18) {
+          // Only accept high-confidence detections to reduce false positives
+          if (code && code.length >= 8 && code.length <= 18 && confidence > 60) {
             console.log('✅ Valid barcode detected:', code);
             setScannedBarcode(code);
             
@@ -325,6 +366,8 @@ export default function App() {
             // Auto-analyze the scanned barcode
             fetchProductData(code);
             switchToScreen('result');
+          } else {
+            console.log(`⚠️ Low confidence detection (${confidence}) or invalid length, continuing scan...`);
           }
         });
         
@@ -496,24 +539,54 @@ export default function App() {
     const endpoints = [
       `https://world.openfoodfacts.org/api/v0/product/${code}.json`,
       `https://us.openfoodfacts.org/api/v0/product/${code}.json`,
+      `https://uk.openfoodfacts.org/api/v0/product/${code}.json`,
+      `https://fr.openfoodfacts.org/api/v0/product/${code}.json`,
       // Try v2 as a fallback as well
-      `https://world.openfoodfacts.org/api/v2/product/${code}.json`,
-      `https://us.openfoodfacts.org/api/v2/product/${code}.json`
+      `https://world.openfoodfacts.org/api/v2/product/${code}.json`
     ];
 
+    let lastError = null;
+    
     for (const url of endpoints) {
       try {
-        const res = await fetch(url);
-        if (!res.ok) continue;
+        console.log(`🌐 Trying endpoint: ${url}`);
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'GlutenGuardian/1.0'
+          },
+          timeout: 10000 // 10 second timeout
+        });
+        
+        if (!res.ok) {
+          console.log(`❌ HTTP ${res.status} for ${url}`);
+          continue;
+        }
+        
         const data = await res.json();
+        console.log(`📥 Response from ${url}:`, {
+          status: data.status,
+          hasProduct: !!data.product,
+          productName: data.product?.product_name
+        });
+        
         // OFF v0 returns { status: 1, product }, v2 returns { product } without status sometimes
         if ((data && data.status === 1 && data.product) || (data && data.product)) {
+          console.log(`✅ Valid product data found at ${url}`);
           return data;
+        } else {
+          console.log(`❌ Invalid or empty product data at ${url}`);
         }
       } catch (e) {
-        // Try next endpoint
+        console.log(`❌ Network error for ${url}:`, e.message);
+        lastError = e;
         continue;
       }
+    }
+    
+    if (lastError) {
+      throw lastError;
     }
     return null;
   };
@@ -608,12 +681,15 @@ export default function App() {
   // Enhanced: try multiple barcode variants and OFF endpoints
   const fetchProductData = async (barcode) => {
     setLoading(true);
+    console.log(`🔍 Starting product lookup for barcode: ${barcode}`);
 
     const candidates = buildBarcodeCandidates(barcode);
+    console.log(`📋 Barcode candidates: ${candidates.join(', ')}`);
 
     // Try cache first for any candidate
     for (const c of candidates) {
       if (cache[c]) {
+        console.log(`💾 Found in cache: ${c}`);
         setProductData(cache[c]);
         const result = analyzeIngredients(cache[c].ingredients_text);
         setAnalysisResult(result);
@@ -625,37 +701,60 @@ export default function App() {
     try {
       let foundProduct = null;
       let usedCode = null;
+      let lastError = null;
 
       for (const c of candidates) {
-        const data = await fetchFromOpenFoodFacts(c);
-        if (data && data.product) {
-          const p = data.product;
-          const product = {
-            product_name: p.product_name || p.generic_name || 'Unknown Product',
-            ingredients_text: getIngredientsTextFromProduct(p),
-            brands: p.brands || p.brand_owner || '',
-            barcode: p.code || c
-          };
-          foundProduct = product;
-          usedCode = product.barcode;
-          break;
+        console.log(`🌐 Trying API lookup for: ${c}`);
+        try {
+          const data = await fetchFromOpenFoodFacts(c);
+          if (data && data.product) {
+            console.log(`✅ Product found for ${c}:`, data.product.product_name);
+            const p = data.product;
+            const product = {
+              product_name: p.product_name || p.generic_name || 'Unknown Product',
+              ingredients_text: getIngredientsTextFromProduct(p),
+              brands: p.brands || p.brand_owner || '',
+              barcode: p.code || c
+            };
+            
+            // Check if we actually got ingredients
+            if (!product.ingredients_text || product.ingredients_text.trim() === '') {
+              console.log(`⚠️ Product found but no ingredients for ${c}`);
+              continue; // Try next candidate
+            }
+            
+            foundProduct = product;
+            usedCode = product.barcode;
+            break;
+          } else {
+            console.log(`❌ No product data for ${c}`);
+          }
+        } catch (apiError) {
+          console.log(`❌ API error for ${c}:`, apiError.message);
+          lastError = apiError;
         }
       }
 
       if (foundProduct) {
+        console.log(`✅ Successfully found product: ${foundProduct.product_name}`);
         setProductData(foundProduct);
         const newCache = { ...cache, [usedCode]: foundProduct };
         saveCache(newCache);
         const result = analyzeIngredients(foundProduct.ingredients_text);
         setAnalysisResult(result);
       } else {
-        // Prevent spam by checking time since last error
+        // Provide more detailed error information
         const now = Date.now();
         if (now - lastErrorTime > 3000) {
           setLastErrorTime(now);
+          const errorMessage = lastError 
+            ? `API Error: ${lastError.message}. Please check your internet connection or try a different barcode.`
+            : `Barcode ${barcode} not found in Open Food Facts database. This might be a local/regional product not yet in the database.`;
+          
+          console.log(`❌ Product lookup failed: ${errorMessage}`);
           webAlert(
             'Product Not Found',
-            'We could not find this barcode in Open Food Facts. Try rescanning in better lighting or entering the barcode manually.'
+            errorMessage + '\n\nTry:\n• Different barcode format\n• Manual ingredient entry\n• Search by product name'
           );
         }
         setProductData(null);
@@ -666,7 +765,7 @@ export default function App() {
       const now = Date.now();
       if (now - lastErrorTime > 3000) {
         setLastErrorTime(now);
-        webAlert('Error', 'Failed to fetch product information. Please check your internet connection.');
+        webAlert('Network Error', `Failed to fetch product information: ${error.message}\n\nPlease check your internet connection and try again.`);
       }
       setProductData(null);
       setAnalysisResult(null);
@@ -998,6 +1097,26 @@ export default function App() {
         <TouchableOpacity
           style={styles.testButton}
           onPress={() => {
+            setBarcodeInput('8712566151219'); // KitKat
+            switchToScreen('manualBarcode');
+          }}
+        >
+          <Text style={styles.testButtonText}>🍫 Test KitKat (Contains Wheat)</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={styles.testButton}
+          onPress={() => {
+            setBarcodeInput('3228857000906'); // Evian Water
+            switchToScreen('manualBarcode');
+          }}
+        >
+          <Text style={styles.testButtonText}>💧 Test Evian Water (Should be Safe)</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={styles.testButton}
+          onPress={() => {
             setManualIngredients('rice, water, salt');
             switchToScreen('manual');
           }}
@@ -1112,25 +1231,55 @@ export default function App() {
 
       <View style={styles.inputContainer}>
         <Text style={styles.label}>Product Barcode:</Text>
+        <Text style={styles.inputHint}>
+          📝 Enter 8-18 digits (UPC, EAN-13, EAN-8, etc.)
+        </Text>
         <TextInput
           style={styles.input}
           placeholder="Enter barcode number (e.g., 1234567890123)"
           value={barcodeInput}
-          onChangeText={setBarcodeInput}
+          onChangeText={(text) => {
+            // Only allow numbers and limit length
+            const cleaned = text.replace(/\D/g, '').slice(0, 18);
+            setBarcodeInput(cleaned);
+          }}
           keyboardType="numeric"
+          maxLength={18}
         />
         
+        {barcodeInput && barcodeInput.length > 0 && (
+          <Text style={styles.barcodeInfo}>
+            {barcodeInput.length < 8 
+              ? `⚠️ Too short (${barcodeInput.length} digits) - need at least 8`
+              : `✅ Valid length (${barcodeInput.length} digits)`
+            }
+          </Text>
+        )}
+        
         <TouchableOpacity 
-          style={[styles.button, styles.analyzeButton]} 
+          style={[styles.button, styles.analyzeButton, 
+                 (!barcodeInput || barcodeInput.length < 8) && styles.disabledButton]} 
           onPress={handleBarcodeAnalysis}
-          disabled={loading}
+          disabled={loading || !barcodeInput || barcodeInput.length < 8}
         >
           {loading ? (
             <ActivityIndicator color="white" />
           ) : (
-            <Text style={styles.buttonText}>Analyze Product</Text>
+            <Text style={styles.buttonText}>
+              {(!barcodeInput || barcodeInput.length < 8) 
+                ? 'Enter Valid Barcode' 
+                : 'Analyze Product'}
+            </Text>
           )}
         </TouchableOpacity>
+
+        <View style={styles.barcodeHelpSection}>
+          <Text style={styles.helpTitle}>💡 Barcode Help:</Text>
+          <Text style={styles.helpText}>• UPC-A: 12 digits (US/Canada)</Text>
+          <Text style={styles.helpText}>• EAN-13: 13 digits (International)</Text>
+          <Text style={styles.helpText}>• EAN-8: 8 digits (Short version)</Text>
+          <Text style={styles.helpText}>• Find barcode on product packaging</Text>
+        </View>
 
         <TouchableOpacity 
           style={[styles.button, styles.backButton]} 
@@ -2133,5 +2282,50 @@ const styles = StyleSheet.create({
   manualButton: {
     backgroundColor: '#FF9800',
     marginTop: 15,
+  },
+
+  // New styles for improved UI
+  inputHint: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 8,
+    fontStyle: 'italic',
+  },
+
+  barcodeInfo: {
+    fontSize: 14,
+    marginTop: 8,
+    marginBottom: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#f0f0f0',
+    textAlign: 'center',
+  },
+
+  disabledButton: {
+    backgroundColor: '#cccccc',
+    opacity: 0.6,
+  },
+
+  barcodeHelpSection: {
+    backgroundColor: '#fff',
+    padding: 15,
+    borderRadius: 8,
+    marginVertical: 20,
+    borderLeft: '4px solid #4CAF50',
+  },
+
+  helpTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2e7d3e',
+    marginBottom: 10,
+  },
+
+  helpText: {
+    fontSize: 14,
+    color: '#555',
+    marginVertical: 2,
   },
 });

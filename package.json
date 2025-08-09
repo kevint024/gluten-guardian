@@ -12,6 +12,8 @@
     "serve": "npx serve dist",
     "deploy": "npm run build:web && npm run serve",
     "deploy:github": "npm run use-web && npm run build:web && node prepare-github-pages.js",
+    "test:production": "node test-production.js",
+    "deploy:test": "npm run build:web && npm run prepare-pages && npm run test:production",
     "prepare-pages": "node prepare-github-pages.js",
     "demo": "node demo.js",
     "switch": "node switch-version.js",
