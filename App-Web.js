@@ -256,33 +256,30 @@ export default function App() {
           constraints: {
             width: { ideal: 1280, min: 640 },
             height: { ideal: 720, min: 480 },
-            facingMode: 'environment', // Use back camera if available
+            facingMode: 'environment',
             aspectRatio: { ideal: 1.7777778 }
-          }
+          },
+          // Focus on center area to reduce false positives and improve speed
+          area: { top: '15%', right: '15%', left: '15%', bottom: '15%' }
         },
         decoder: {
           readers: [
-            'code_128_reader',
             'ean_reader',
             'ean_8_reader',
-            'code_39_reader',
             'upc_reader',
             'upc_e_reader',
+            'code_128_reader',
+            'code_39_reader',
             'i2of5_reader'
           ],
-          debug: {
-            drawBoundingBox: true,
-            showFrequency: true,
-            drawScanline: true,
-            showPattern: true
-          }
+          debug: false
         },
         locate: true,
         locator: {
-          patchSize: 'large',
-          halfSample: true
+          patchSize: 'medium',
+          halfSample: false
         },
-        numOfWorkers: navigator.hardwareConcurrency || 4,
+        numOfWorkers: (typeof Worker !== 'undefined' ? (navigator.hardwareConcurrency || 4) : 0),
         frequency: 10,
         debug: false
       }, (err) => {
@@ -472,6 +469,82 @@ export default function App() {
     }
   };
 
+  // Helper: build robust barcode candidates (normalize UPC-A/EAN-13 variants)
+  const buildBarcodeCandidates = (raw) => {
+    const digits = (raw || '').toString().replace(/\D/g, '');
+    const candidates = new Set();
+    if (!digits) return [];
+
+    candidates.add(digits);
+
+    // If UPC-A (12), also try EAN-13 with leading 0
+    if (digits.length === 12) {
+      candidates.add(`0${digits}`);
+    }
+
+    // If EAN-13 with leading 0, also try UPC-A (strip leading 0)
+    if (digits.length === 13 && digits.startsWith('0')) {
+      candidates.add(digits.slice(1));
+    }
+
+    // Allow EAN-8 as-is (no transformation here)
+    return Array.from(candidates);
+  };
+
+  // Helper: fetch product from multiple OFF endpoints/regions
+  const fetchFromOpenFoodFacts = async (code) => {
+    const endpoints = [
+      `https://world.openfoodfacts.org/api/v0/product/${code}.json`,
+      `https://us.openfoodfacts.org/api/v0/product/${code}.json`,
+      // Try v2 as a fallback as well
+      `https://world.openfoodfacts.org/api/v2/product/${code}.json`,
+      `https://us.openfoodfacts.org/api/v2/product/${code}.json`
+    ];
+
+    for (const url of endpoints) {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) continue;
+        const data = await res.json();
+        // OFF v0 returns { status: 1, product }, v2 returns { product } without status sometimes
+        if ((data && data.status === 1 && data.product) || (data && data.product)) {
+          return data;
+        }
+      } catch (e) {
+        // Try next endpoint
+        continue;
+      }
+    }
+    return null;
+  };
+
+  // Helper: pick best ingredients field available
+  const getIngredientsTextFromProduct = (p) => {
+    if (!p) return '';
+    const fromText = (
+      p.ingredients_text ||
+      p.ingredients_text_en ||
+      p.ingredients_text_us ||
+      p.ingredients_text_gb ||
+      p.ingredients_text_fr ||
+      p.ingredients_text_es ||
+      p.ingredients_text_de ||
+      ''
+    );
+    if (fromText && fromText.trim().length > 0) return fromText;
+
+    // Fallback: join from ingredients array
+    if (Array.isArray(p.ingredients) && p.ingredients.length > 0) {
+      const joined = p.ingredients
+        .map((ing) => (ing && (ing.text || ing.id || ing.origin)) ? (ing.text || ing.id || ing.origin) : '')
+        .filter(Boolean)
+        .join(', ');
+      return joined;
+    }
+
+    return '';
+  };
+
   const handleBarcodeAnalysis = () => {
     if (!barcodeInput.trim()) {
       webAlert('Error', 'Please enter a barcode to analyze.');
@@ -532,50 +605,66 @@ export default function App() {
     }
   };
 
+  // Enhanced: try multiple barcode variants and OFF endpoints
   const fetchProductData = async (barcode) => {
     setLoading(true);
-    
-    if (cache[barcode]) {
-      setProductData(cache[barcode]);
-      const result = analyzeIngredients(cache[barcode].ingredients_text);
-      setAnalysisResult(result);
-      setLoading(false);
-      return;
+
+    const candidates = buildBarcodeCandidates(barcode);
+
+    // Try cache first for any candidate
+    for (const c of candidates) {
+      if (cache[c]) {
+        setProductData(cache[c]);
+        const result = analyzeIngredients(cache[c].ingredients_text);
+        setAnalysisResult(result);
+        setLoading(false);
+        return;
+      }
     }
 
     try {
-      const response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
-      const data = await response.json();
-      
-      if (data.status === 1 && data.product) {
-        const product = {
-          product_name: data.product.product_name || 'Unknown Product',
-          ingredients_text: data.product.ingredients_text || '',
-          brands: data.product.brands || '',
-          barcode: barcode
-        };
-        
-        setProductData(product);
-        
-        const newCache = { ...cache, [barcode]: product };
+      let foundProduct = null;
+      let usedCode = null;
+
+      for (const c of candidates) {
+        const data = await fetchFromOpenFoodFacts(c);
+        if (data && data.product) {
+          const p = data.product;
+          const product = {
+            product_name: p.product_name || p.generic_name || 'Unknown Product',
+            ingredients_text: getIngredientsTextFromProduct(p),
+            brands: p.brands || p.brand_owner || '',
+            barcode: p.code || c
+          };
+          foundProduct = product;
+          usedCode = product.barcode;
+          break;
+        }
+      }
+
+      if (foundProduct) {
+        setProductData(foundProduct);
+        const newCache = { ...cache, [usedCode]: foundProduct };
         saveCache(newCache);
-        
-        const result = analyzeIngredients(product.ingredients_text);
+        const result = analyzeIngredients(foundProduct.ingredients_text);
         setAnalysisResult(result);
       } else {
         // Prevent spam by checking time since last error
         const now = Date.now();
-        if (now - lastErrorTime > 3000) { // 3 second cooldown
+        if (now - lastErrorTime > 3000) {
           setLastErrorTime(now);
-          webAlert('Product Not Found', 'This product is not in the Open Food Facts database. Try entering the barcode manually.');
+          webAlert(
+            'Product Not Found',
+            'We could not find this barcode in Open Food Facts. Try rescanning in better lighting or entering the barcode manually.'
+          );
         }
         setProductData(null);
         setAnalysisResult(null);
       }
     } catch (error) {
-      console.error('Error fetching product data:', error);
+      console.error('Error fetching product data (enhanced):', error);
       const now = Date.now();
-      if (now - lastErrorTime > 3000) { // 3 second cooldown
+      if (now - lastErrorTime > 3000) {
         setLastErrorTime(now);
         webAlert('Error', 'Failed to fetch product information. Please check your internet connection.');
       }
