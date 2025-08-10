@@ -931,7 +931,7 @@ export default function App() {
           const tastyResponse = await fetch(`https://tasty.p.rapidapi.com/recipes/list?from=0&size=4&q=${encodeURIComponent(searchTerm)}`, {
             method: 'GET',
             headers: {
-              'X-RapidAPI-Key': 'demo', // Using demo key - may be limited
+              'X-RapidAPI-Key': '8238c2f035msh09d241fe20a515ep1d0ad8jsnbb9cc63ab3f6', // Using demo key - may be limited
               'X-RapidAPI-Host': 'tasty.p.rapidapi.com'
             }
           });
