@@ -214,14 +214,7 @@ export default function App() {
     
     // Auto-start camera when on camera screen
     console.log('📱 Screen changed to:', currentScreen);
-    
-    // Update processing flag when screen changes
-    if (currentScreen === 'camera' && scannerState === 'active') {
-      shouldProcessDetection.current = true;
-    } else {
-      shouldProcessDetection.current = false;
-    }
-    console.log('🎥 Should process detections:', shouldProcessDetection.current);
+    console.log('🎥 Scanner state:', scannerState);
     console.log('🎥 Is scanning:', isScanning);
     console.log('❌ Camera error:', cameraError);
     
@@ -238,6 +231,19 @@ export default function App() {
       }
     };
   }, [currentScreen]);
+
+  // Separate effect to handle scanner state changes and detection processing
+  useEffect(() => {
+    // Update processing flag based on current screen and scanner state
+    const shouldProcess = (currentScreen === 'camera') && 
+                         (scannerState === 'active' || scannerState === 'starting');
+    
+    shouldProcessDetection.current = shouldProcess;
+    console.log('🎯 Detection processing updated:', shouldProcess);
+    console.log('   - Current screen:', currentScreen);
+    console.log('   - Scanner state:', scannerState);
+    console.log('   - Should process:', shouldProcessDetection.current);
+  }, [currentScreen, scannerState]);
 
   useEffect(() => {
     // Cleanup on component unmount
@@ -263,6 +269,7 @@ export default function App() {
 
     try {
       setIsScanning(true);
+      setScannerState('starting'); // Set to starting immediately
       setCameraError(null);
       setScannedBarcode('');
 
@@ -444,9 +451,14 @@ export default function App() {
         
         // Add detection event listener
         Quagga.onDetected((result) => {
-          // Check scanner state and processing flag
-          if (!shouldProcessDetection.current || scannerState !== 'active') {
-            console.log('⚠️ Ignoring detection - scanner not active or processing disabled');
+          // Check if we should process detections (more permissive during startup)
+          const canProcess = shouldProcessDetection.current && 
+                           (scannerState === 'active' || scannerState === 'starting');
+          
+          if (!canProcess) {
+            console.log('⚠️ Ignoring detection - scanner not ready');
+            console.log('   - Should process:', shouldProcessDetection.current);
+            console.log('   - Scanner state:', scannerState);
             return;
           }
           
