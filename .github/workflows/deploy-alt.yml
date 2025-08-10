@@ -1,34 +1,27 @@
-name: Deploy to GitHub Pages
+name: Deploy to GitHub Pages (Alternative)
 
 on:
   push:
-    branches: [ New-Web-Version, main ]
-  pull_request:
     branches: [ New-Web-Version ]
+  workflow_dispatch:
 
 # Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
 permissions:
   contents: read
   pages: write
   id-token: write
-
-# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
-# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
-concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  actions: write
 
 jobs:
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
@@ -54,18 +47,14 @@ jobs:
         test -f dist/.nojekyll
         test -d dist/_expo
         echo "✅ Essential files verified"
-        
-    - name: Setup Pages
-      if: github.ref == 'refs/heads/New-Web-Version' && github.event_name == 'push'
-      uses: actions/configure-pages@v3
-      
-    - name: Upload artifact
-      if: github.ref == 'refs/heads/New-Web-Version' && github.event_name == 'push'
-      uses: actions/upload-pages-artifact@v2
-      with:
-        path: './dist'
+        ls -la dist/
         
     - name: Deploy to GitHub Pages
-      if: github.ref == 'refs/heads/New-Web-Version' && github.event_name == 'push'
-      id: deployment
-      uses: actions/deploy-pages@v2
+      uses: peaceiris/actions-gh-pages@v4
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./dist
+        force_orphan: true
+        user_name: 'github-actions[bot]'
+        user_email: 'github-actions[bot]@users.noreply.github.com'
+        commit_message: '🚀 Deploy Gluten Guardian to GitHub Pages'
