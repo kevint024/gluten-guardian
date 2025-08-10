@@ -26,7 +26,8 @@ export default {
     web: {
       favicon: "./assets/favicon.png",
       bundler: "metro",
-      output: "single"
+      output: "single",
+      baseUrl: "/gluten-guardian/"
     },
     plugins: [
       [
