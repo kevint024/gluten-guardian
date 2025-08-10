@@ -371,8 +371,8 @@ export default function App() {
               { focusDistance: { ideal: 0.1 } }
             ]
           },
-          // Larger detection area for better scanning
-          area: { top: '15%', right: '15%', left: '15%', bottom: '15%' } // Smaller area for performance
+          // Centered detection area for better user experience
+          area: { top: '30%', right: '20%', left: '20%', bottom: '30%' } // Centered scanning zone
         },
         decoder: {
           readers: [
