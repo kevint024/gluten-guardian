@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Camera Barcode Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #scanner { border: 2px solid #4CAF50; border-radius: 8px; }
+        .controls { margin: 20px 0; }
+        button { padding: 10px 20px; margin: 5px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #45a049; }
+        .info { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>📱 Camera Barcode Scanner Test</h1>
+    <p>This tests if QuaggaJS barcode scanning works in your browser.</p>
+    
+    <div class="controls">
+        <button onclick="startScanner()">📷 Start Camera</button>
+        <button onclick="stopScanner()">⏹️ Stop Camera</button>
+        <button onclick="testBarcode()">🧪 Test with Sample</button>
+    </div>
+    
+    <div id="scanner" style="width: 640px; height: 480px; margin: 20px auto;"></div>
+    
+    <div class="info">
+        <h3>📊 Detection Log:</h3>
+        <div id="log" style="height: 200px; overflow-y: auto; background: #fff; padding: 10px; border: 1px solid #ddd;"></div>
+    </div>
+    
+    <div class="info">
+        <h3>💡 Tips for Better Scanning:</h3>
+        <ul>
+            <li>Hold device steady, 6-12 inches from barcode</li>
+            <li>Ensure good lighting (avoid shadows)</li>
+            <li>Try different angles if not detecting</li>
+            <li>Make sure barcode is flat (not curved)</li>
+            <li>Clean camera lens if blurry</li>
+        </ul>
+    </div>
+
+    <script src="https://unpkg.com/quagga@0.12.1/dist/quagga.min.js"></script>
+    <script>
+        let isScanning = false;
+        
+        function log(message) {
+            const logEl = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            logEl.innerHTML += `[${time}] ${message}<br>`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(message);
+        }
+        
+        function startScanner() {
+            if (isScanning) {
+                log('⚠️ Scanner already running');
+                return;
+            }
+            
+            log('🚀 Starting camera scanner...');
+            isScanning = true;
+            
+            Quagga.init({
+                inputStream: {
+                    name: 'Live',
+                    type: 'LiveStream',
+                    target: document.getElementById('scanner'),
+                    constraints: {
+                        width: { ideal: 1280, min: 640 },
+                        height: { ideal: 720, min: 480 },
+                        facingMode: 'environment'
+                    }
+                },
+                decoder: {
+                    readers: [
+                        'ean_reader',
+                        'ean_8_reader',
+                        'upc_reader',
+                        'upc_e_reader',
+                        'code_128_reader',
+                        'code_39_reader'
+                    ]
+                },
+                locate: true,
+                locator: {
+                    patchSize: 'large',
+                    halfSample: false
+                },
+                numOfWorkers: 0,
+                frequency: 3
+            }, (err) => {
+                if (err) {
+                    log(`❌ Scanner error: ${err.message}`);
+                    isScanning = false;
+                    return;
+                }
+                
+                log('✅ Scanner initialized successfully');
+                
+                Quagga.onDetected((result) => {
+                    const code = result.codeResult.code;
+                    const confidence = Math.round(result.codeResult.quality || 0);
+                    const format = result.codeResult.format;
+                    
+                    log(`🎯 DETECTED: ${code} (${format}, confidence: ${confidence}%)`);
+                    
+                    if (confidence > 30) {
+                        log(`✅ ACCEPTED: ${code}`);
+                        // Stop after successful detection
+                        setTimeout(stopScanner, 1000);
+                    } else {
+                        log(`⚠️ Low confidence, continuing...`);
+                    }
+                });
+                
+                Quagga.start();
+                log('🔍 Scanner active - point camera at barcode');
+            });
+        }
+        
+        function stopScanner() {
+            if (!isScanning) {
+                log('⚠️ Scanner not running');
+                return;
+            }
+            
+            try {
+                Quagga.stop();
+                log('⏹️ Scanner stopped');
+            } catch (e) {
+                log(`⚠️ Stop error: ${e.message}`);
+            }
+            isScanning = false;
+        }
+        
+        function testBarcode() {
+            log('🧪 Testing with sample barcode data...');
+            log('📝 Try scanning a real barcode with your camera');
+            log('🍫 Test barcodes: 3017620422003 (Nutella), 8712566151219 (KitKat)');
+            log('💡 Print a barcode image from Google and try scanning it');
+        }
+        
+        // Check browser support
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            log('❌ Camera not supported in this browser');
+        } else {
+            log('✅ Camera support detected');
+        }
+        
+        if (typeof Quagga === 'undefined') {
+            log('❌ QuaggaJS not loaded');
+        } else {
+            log('✅ QuaggaJS loaded successfully');
+        }
+    </script>
+</body>
+</html>

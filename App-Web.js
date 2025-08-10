@@ -271,20 +271,45 @@ export default function App() {
         return;
       }
 
-      // Check for camera availability first
+      // Check for camera availability and request advanced permissions
       try {
+        console.log('📹 Requesting camera access with advanced constraints...');
+        
+        // Request camera with focus capabilities
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: 'environment',
+            width: { ideal: 1920, min: 640 },
+            height: { ideal: 1080, min: 480 },
+            focusMode: 'continuous',
+            advanced: [
+              { focusMode: 'continuous' },
+              { focusDistance: { ideal: 0.1 } },
+              { exposureMode: 'manual' },
+              { whiteBalanceMode: 'manual' }
+            ]
+          }
+        });
+        
+        console.log('✅ Camera access granted with advanced features');
+        
+        // Stop the test stream since Quagga will handle it
+        stream.getTracks().forEach(track => track.stop());
+        
         const devices = await navigator.mediaDevices.enumerateDevices();
         const cameras = devices.filter(device => device.kind === 'videoinput');
-        console.log(`📹 Found ${cameras.length} camera(s)`);
+        console.log(`📹 Found ${cameras.length} camera(s):`, cameras.map(c => c.label || 'Unknown Camera'));
         
         if (cameras.length === 0) {
           setCameraError('No cameras detected. Please connect a camera or use manual barcode entry.');
           setIsScanning(false);
           return;
         }
-      } catch (enumError) {
-        console.warn('Could not enumerate devices:', enumError);
-        // Continue anyway - some browsers don't support enumeration
+      } catch (permissionError) {
+        console.error('Camera permission error:', permissionError);
+        setCameraError(`Camera access denied: ${permissionError.message}. Please allow camera access and refresh.`);
+        setIsScanning(false);
+        return;
       }
 
       Quagga.init({
@@ -293,42 +318,63 @@ export default function App() {
           type: 'LiveStream',
           target: scannerRef.current,
           constraints: {
-            width: { ideal: 1280, min: 320, max: 1920 },
-            height: { ideal: 720, min: 240, max: 1080 },
-            facingMode: 'environment',
-            aspectRatio: { ideal: 1.7777778 }
+            width: { ideal: 1920, min: 640, max: 1920 },
+            height: { ideal: 1080, min: 480, max: 1080 },
+            facingMode: 'environment', // Use back camera on mobile
+            aspectRatio: { ideal: 16/9 },
+            focusMode: 'continuous',
+            advanced: [
+              { focusMode: 'continuous' },
+              { focusDistance: { ideal: 0.1 } }
+            ]
           },
-          // Focus on center area to reduce false positives and improve speed
-          area: { top: '20%', right: '20%', left: '20%', bottom: '20%' }
+          // Larger detection area for better scanning
+          area: { top: '10%', right: '10%', left: '10%', bottom: '10%' }
         },
         decoder: {
           readers: [
-            'ean_reader',
-            'ean_8_reader', 
-            'ean_5_reader',
-            'ean_2_reader',
-            'upc_reader',
-            'upc_e_reader',
-            'code_128_reader',
-            'code_39_reader',
+            'ean_reader',      // Most common international format
+            'ean_8_reader',    // Short EAN format
+            'ean_5_reader',    // Add-on codes
+            'ean_2_reader',    // Add-on codes
+            'upc_reader',      // US/Canada format
+            'upc_e_reader',    // Short UPC format
+            'code_128_reader', // Common barcode format
+            'code_39_reader',  // Older but still used
             'code_39_vin_reader',
-            'codabar_reader',
-            'i2of5_reader'
+            'codabar_reader',  // Used in libraries, etc.
+            'i2of5_reader',    // Interleaved 2 of 5
+            'code_93_reader'   // Extended ASCII
           ],
           debug: {
             drawBoundingBox: true,
-            showFrequency: true,
+            showFrequency: false,
             drawScanline: true,
-            showPattern: true
-          }
+            showPattern: false
+          },
+          multiple: false // Only detect one barcode at a time
         },
         locate: true,
         locator: {
-          patchSize: 'medium',
-          halfSample: false
+          patchSize: 'large', // Increased for better detection
+          halfSample: false,  // Use full resolution
+          debug: {
+            showCanvas: false,
+            showPatches: false,
+            showFoundPatches: false,
+            showSkeleton: false,
+            showLabels: false,
+            showPatchLabels: false,
+            showRemainingPatchLabels: false,
+            boxFromPatches: {
+              showTransformed: false,
+              showTransformedBox: false,
+              showBB: false
+            }
+          }
         },
-        numOfWorkers: (typeof Worker !== 'undefined' ? Math.min(navigator.hardwareConcurrency || 2, 4) : 0),
-        frequency: 5, // Reduced frequency to improve performance
+        numOfWorkers: 0, // Disable workers for better compatibility
+        frequency: 2, // Reduced frequency for better performance and accuracy
         debug: {
           drawBoundingBox: true,
           drawScanline: true
@@ -376,10 +422,15 @@ export default function App() {
           console.log('🔍 Barcode detected:', result);
           const code = result.codeResult.code;
           const confidence = result.codeResult.quality || 0;
-          console.log(`📊 Barcode code: ${code}, confidence: ${confidence}`);
+          const format = result.codeResult.format;
+          console.log(`📊 Barcode: ${code}, Format: ${format}, Confidence: ${confidence}`);
           
-          // Only accept high-confidence detections to reduce false positives
-          if (code && code.length >= 8 && code.length <= 18 && confidence > 60) {
+          // More lenient detection - accept lower confidence for common formats
+          const isValidLength = code && code.length >= 8 && code.length <= 18;
+          const isCommonFormat = ['ean_reader', 'upc_reader', 'code_128_reader'].includes(format);
+          const minConfidence = isCommonFormat ? 30 : 50; // Lower threshold for common formats
+          
+          if (isValidLength && confidence > minConfidence) {
             console.log('✅ Valid barcode detected:', code);
             setScannedBarcode(code);
             
@@ -390,7 +441,8 @@ export default function App() {
             fetchProductData(code);
             switchToScreen('result');
           } else {
-            console.log(`⚠️ Low confidence detection (${confidence}) or invalid length, continuing scan...`);
+            console.log(`⚠️ Detection rejected - Length: ${code?.length}, Confidence: ${confidence}, Min required: ${minConfidence}`);
+            // Continue scanning instead of giving up
           }
         });
         
@@ -1212,19 +1264,63 @@ export default function App() {
                 width: '100%',
                 maxWidth: '800px',
                 height: '600px',
-                border: '2px solid #4CAF50',
-                borderRadius: '8px',
+                border: '3px solid #4CAF50',
+                borderRadius: '12px',
                 overflow: 'hidden',
                 position: 'relative',
-                backgroundColor: '#000'
+                backgroundColor: '#000',
+                boxShadow: '0 4px 8px rgba(0,0,0,0.3)'
               }}
             />
+            
+            {/* Scanning overlay with targeting guide */}
+            <div style={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '300px',
+              height: '150px',
+              border: '2px solid #FF5722',
+              borderRadius: '8px',
+              background: 'rgba(255, 87, 34, 0.1)',
+              pointerEvents: 'none',
+              zIndex: 10
+            }}>
+              <div style={{
+                position: 'absolute',
+                top: '-30px',
+                left: '50%',
+                transform: 'translateX(-50%)',
+                color: '#FF5722',
+                fontWeight: 'bold',
+                fontSize: '14px',
+                background: 'rgba(0,0,0,0.7)',
+                padding: '4px 8px',
+                borderRadius: '4px'
+              }}>
+                📱 Position barcode here
+              </div>
+            </div>
             
             {isScanning && (
               <View style={styles.scanningOverlay}>
                 <Text style={styles.scanningText}>🔍 Scanning for barcodes...</Text>
-                <Text style={styles.scanningSubtext}>Hold barcode steady in camera view</Text>
-                <Text style={styles.scanningSubtext}>Make sure barcode is well-lit and in focus</Text>
+                <Text style={styles.scanningSubtext}>📏 Hold barcode 6-12 inches from camera</Text>
+                <Text style={styles.scanningSubtext}>💡 Ensure good lighting and steady hands</Text>
+                <Text style={styles.scanningSubtext}>📐 Try different angles if not detecting</Text>
+                
+                <TouchableOpacity 
+                  style={[styles.button, styles.torchButton]} 
+                  onPress={() => {
+                    // Try to toggle torch if available
+                    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                      console.log('🔦 Torch toggle requested (browser dependent)');
+                    }
+                  }}
+                >
+                  <Text style={styles.buttonText}>🔦 Toggle Light</Text>
+                </TouchableOpacity>
               </View>
             )}
             
@@ -2359,5 +2455,42 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#555',
     marginVertical: 2,
+  },
+
+  // Torch button for camera
+  torchButton: {
+    backgroundColor: '#FF9800',
+    marginTop: 10,
+    minWidth: 120,
+  },
+
+  // Scanner container positioning
+  scannerContainer: {
+    position: 'relative',
+    alignItems: 'center',
+  },
+
+  // Scanning overlay improvements
+  scanningOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    padding: 20,
+    borderRadius: 12,
+    marginTop: 15,
+    alignItems: 'center',
+  },
+
+  scanningText: {
+    color: '#4CAF50',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+
+  scanningSubtext: {
+    color: '#fff',
+    fontSize: 14,
+    marginVertical: 3,
+    textAlign: 'center',
   },
 });
