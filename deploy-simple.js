@@ -39,6 +39,17 @@ try {
   // Copy dist to docs (GitHub Pages /docs strategy)
   fs.cpSync('dist', 'docs', { recursive: true });
   
+  // Fix paths for GitHub Pages (convert absolute to relative)
+  const htmlPath = 'docs/index.html';
+  if (fs.existsSync(htmlPath)) {
+    let htmlContent = fs.readFileSync(htmlPath, 'utf8');
+    // Fix favicon path
+    htmlContent = htmlContent.replace(/href="\/favicon\.ico"/g, 'href="./favicon.ico"');
+    // Fix script paths
+    htmlContent = htmlContent.replace(/src="\/_expo\//g, 'src="./_expo/');
+    fs.writeFileSync(htmlPath, htmlContent);
+  }
+  
   // Create .nojekyll file
   fs.writeFileSync('docs/.nojekyll', '');
   
