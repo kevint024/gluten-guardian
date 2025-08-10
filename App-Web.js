@@ -207,6 +207,10 @@ export default function App() {
   const [scannedBarcode, setScannedBarcode] = useState('');
   const [lastErrorTime, setLastErrorTime] = useState(0); // Prevent error spam
   const scannerRef = useRef(null);
+  
+  // Barcode consistency tracking
+  const barcodeBuffer = useRef([]);
+  const lastDetectionTime = useRef(0);
 
   // Helper function to get current screen (avoids closure issues)
   const getCurrentScreen = () => currentScreen;
@@ -473,22 +477,62 @@ export default function App() {
           const format = result.codeResult.format;
           console.log(`📊 Barcode: ${code}, Format: ${format}, Confidence: ${confidence}`);
           
-          // Very lenient detection - prioritize getting barcodes working
+          // Smart validation with multiple criteria
           const isValidLength = code && code.length >= 8 && code.length <= 18;
           const isValidFormat = code && /^[0-9]+$/.test(code); // Must be all digits
+          const now = Date.now();
           
-          // Much lower confidence thresholds, especially for EAN codes
-          let minConfidence = 10; // Very low default
+          // Consistency checking - require multiple detections of same code
+          barcodeBuffer.current.push({ code, confidence, timestamp: now });
+          
+          // Keep only recent detections (last 2 seconds)
+          barcodeBuffer.current = barcodeBuffer.current.filter(detection => 
+            now - detection.timestamp < 2000
+          );
+          
+          // Count how many times this exact code was detected recently
+          const sameCodeDetections = barcodeBuffer.current.filter(detection => 
+            detection.code === code
+          );
+          
+          // Adaptive confidence thresholds based on format and consistency
+          let minConfidence = 40; // Default moderate threshold
+          let requiredDetections = 1; // How many times we need to see this code
+          
           if (format.includes('ean') || format.includes('upc')) {
-            minConfidence = 0; // Accept any EAN/UPC detection
+            // EAN/UPC codes - more lenient but require consistency
+            if (sameCodeDetections.length >= 2) {
+              minConfidence = 0; // If seen multiple times, accept any confidence
+            } else {
+              minConfidence = 20; // First detection needs some confidence
+              requiredDetections = 1;
+            }
           } else if (format.includes('code_128')) {
-            minConfidence = 5;
+            minConfidence = 25;
+            requiredDetections = 1;
           }
           
-          console.log(`🎯 Validation: Length=${isValidLength}, Format=${isValidFormat}, MinConf=${minConfidence}`);
+          // Quality check - average confidence of recent detections
+          const avgConfidence = sameCodeDetections.length > 0 
+            ? sameCodeDetections.reduce((sum, d) => sum + d.confidence, 0) / sameCodeDetections.length
+            : confidence;
           
-          if (isValidLength && isValidFormat && confidence >= minConfidence) {
-            console.log('✅ Valid barcode detected:', code);
+          const meetsConfidence = avgConfidence >= minConfidence;
+          const meetsConsistency = sameCodeDetections.length >= requiredDetections;
+          const basicValidation = isValidLength && isValidFormat;
+          
+          console.log(`🎯 Smart Validation:`);
+          console.log(`   - Length valid: ${isValidLength}`);
+          console.log(`   - Format valid: ${isValidFormat}`);
+          console.log(`   - Confidence: ${confidence} (avg: ${avgConfidence.toFixed(1)}, min: ${minConfidence})`);
+          console.log(`   - Consistency: ${sameCodeDetections.length}/${requiredDetections} detections`);
+          console.log(`   - Recent buffer: ${barcodeBuffer.current.length} codes`);
+          
+          if (basicValidation && meetsConfidence && meetsConsistency) {
+            console.log('✅ Smart validation passed - processing barcode:', code);
+            
+            // Clear buffer to prevent duplicate processing
+            barcodeBuffer.current = [];
             
             setScannedBarcode(code);
             
@@ -497,8 +541,8 @@ export default function App() {
             fetchProductData(code);
             switchToScreen('result');
           } else {
-            console.log(`⚠️ Detection rejected - Length: ${code?.length}, Format valid: ${isValidFormat}, Confidence: ${confidence}, Min required: ${minConfidence}`);
-            // Continue scanning instead of giving up
+            console.log(`⚠️ Smart validation failed - continuing scan`);
+            // Continue scanning for better detection
           }
         });
         
