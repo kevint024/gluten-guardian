@@ -208,6 +208,9 @@ export default function App() {
   const [lastErrorTime, setLastErrorTime] = useState(0); // Prevent error spam
   const scannerRef = useRef(null);
 
+  // Helper function to get current screen (avoids closure issues)
+  const getCurrentScreen = () => currentScreen;
+
   useEffect(() => {
     loadFavorites();
     loadCache();
@@ -234,15 +237,12 @@ export default function App() {
 
   // Separate effect to handle scanner state changes and detection processing
   useEffect(() => {
-    // Update processing flag based on current screen and scanner state
-    const shouldProcess = (currentScreen === 'camera') && 
-                         (scannerState === 'active' || scannerState === 'starting');
+    // Simple logic: allow processing when on camera screen
+    const shouldProcess = (currentScreen === 'camera');
     
     shouldProcessDetection.current = shouldProcess;
     console.log('🎯 Detection processing updated:', shouldProcess);
     console.log('   - Current screen:', currentScreen);
-    console.log('   - Scanner state:', scannerState);
-    console.log('   - Should process:', shouldProcessDetection.current);
   }, [currentScreen, scannerState]);
 
   useEffect(() => {
@@ -451,14 +451,18 @@ export default function App() {
         
         // Add detection event listener
         Quagga.onDetected((result) => {
-          // Check if we should process detections (more permissive during startup)
-          const canProcess = shouldProcessDetection.current && 
-                           (scannerState === 'active' || scannerState === 'starting');
+          // More robust check - use refs to get current state
+          const currentScreen = getCurrentScreen();
+          const isOnCameraScreen = currentScreen === 'camera';
+          const shouldProcess = shouldProcessDetection.current;
           
-          if (!canProcess) {
-            console.log('⚠️ Ignoring detection - scanner not ready');
-            console.log('   - Should process:', shouldProcessDetection.current);
-            console.log('   - Scanner state:', scannerState);
+          console.log('🔍 Barcode detection attempt:');
+          console.log('   - Current screen:', currentScreen);
+          console.log('   - On camera screen:', isOnCameraScreen);
+          console.log('   - Should process flag:', shouldProcess);
+          
+          if (!isOnCameraScreen || !shouldProcess) {
+            console.log('⚠️ Ignoring detection - not ready');
             return;
           }
           
