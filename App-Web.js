@@ -473,28 +473,31 @@ export default function App() {
           const format = result.codeResult.format;
           console.log(`📊 Barcode: ${code}, Format: ${format}, Confidence: ${confidence}`);
           
-          // More lenient detection - accept lower confidence for common formats
+          // Very lenient detection - prioritize getting barcodes working
           const isValidLength = code && code.length >= 8 && code.length <= 18;
-          const isCommonFormat = ['ean_reader', 'upc_reader', 'code_128_reader'].includes(format);
-          const minConfidence = isCommonFormat ? 30 : 50; // Lower threshold for common formats
+          const isValidFormat = code && /^[0-9]+$/.test(code); // Must be all digits
           
-          if (isValidLength && confidence > minConfidence) {
+          // Much lower confidence thresholds, especially for EAN codes
+          let minConfidence = 10; // Very low default
+          if (format.includes('ean') || format.includes('upc')) {
+            minConfidence = 0; // Accept any EAN/UPC detection
+          } else if (format.includes('code_128')) {
+            minConfidence = 5;
+          }
+          
+          console.log(`🎯 Validation: Length=${isValidLength}, Format=${isValidFormat}, MinConf=${minConfidence}`);
+          
+          if (isValidLength && isValidFormat && confidence >= minConfidence) {
             console.log('✅ Valid barcode detected:', code);
-            
-            // Immediately disable processing to prevent duplicates
-            shouldProcessDetection.current = false;
-            setScannerState('stopping');
             
             setScannedBarcode(code);
             
-            // Stop scanner with delay to ensure proper cleanup
-            setTimeout(() => {
-              stopScanner();
-              fetchProductData(code);
-              switchToScreen('result');
-            }, 100);
+            // Stop scanner and process immediately
+            stopScanner();
+            fetchProductData(code);
+            switchToScreen('result');
           } else {
-            console.log(`⚠️ Detection rejected - Length: ${code?.length}, Confidence: ${confidence}, Min required: ${minConfidence}`);
+            console.log(`⚠️ Detection rejected - Length: ${code?.length}, Format valid: ${isValidFormat}, Confidence: ${confidence}, Min required: ${minConfidence}`);
             // Continue scanning instead of giving up
           }
         });
