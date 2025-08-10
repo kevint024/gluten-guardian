@@ -18,6 +18,25 @@ if (Platform.OS === 'web') {
   try {
     Quagga = require('quagga');
     console.log('📦 QuaggaJS loaded successfully');
+    
+    // Canvas performance optimization for QuaggaJS
+    if (typeof window !== 'undefined') {
+      const originalGetContext = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function(contextType, contextAttributes) {
+        if (contextType === '2d') {
+          const optimizedAttributes = {
+            ...contextAttributes,
+            willReadFrequently: true,
+            alpha: false,
+            desynchronized: true
+          };
+          console.log('🎨 Canvas optimized for frequent reads (fixes performance warnings)');
+          return originalGetContext.call(this, contextType, optimizedAttributes);
+        }
+        return originalGetContext.call(this, contextType, contextAttributes);
+      };
+      console.log('✅ Canvas performance optimization loaded');
+    }
   } catch (e) {
     console.error('❌ QuaggaJS not available:', e);
     console.log('Installing QuaggaJS: npm install quagga');
@@ -182,6 +201,8 @@ export default function App() {
   
   // Camera scanning states
   const [isScanning, setIsScanning] = useState(false);
+  const [scannerState, setScannerState] = useState('idle'); // 'idle', 'starting', 'active', 'stopping'
+  const shouldProcessDetection = useRef(true);
   const [cameraError, setCameraError] = useState(null);
   const [scannedBarcode, setScannedBarcode] = useState('');
   const [lastErrorTime, setLastErrorTime] = useState(0); // Prevent error spam
@@ -193,6 +214,14 @@ export default function App() {
     
     // Auto-start camera when on camera screen
     console.log('📱 Screen changed to:', currentScreen);
+    
+    // Update processing flag when screen changes
+    if (currentScreen === 'camera' && scannerState === 'active') {
+      shouldProcessDetection.current = true;
+    } else {
+      shouldProcessDetection.current = false;
+    }
+    console.log('🎥 Should process detections:', shouldProcessDetection.current);
     console.log('🎥 Is scanning:', isScanning);
     console.log('❌ Camera error:', cameraError);
     
@@ -318,8 +347,9 @@ export default function App() {
           type: 'LiveStream',
           target: scannerRef.current,
           constraints: {
-            width: { ideal: 1920, min: 640, max: 1920 },
-            height: { ideal: 1080, min: 480, max: 1080 },
+            width: { ideal: 1280, min: 640, max: 1280 }, // Optimized for performance
+            height: { ideal: 720, min: 480, max: 720 },  // Optimized for performance
+            frameRate: { ideal: 15, max: 20 }, // Limit frame rate to reduce CPU
             facingMode: 'environment', // Use back camera on mobile
             aspectRatio: { ideal: 16/9 },
             focusMode: 'continuous',
@@ -329,7 +359,7 @@ export default function App() {
             ]
           },
           // Larger detection area for better scanning
-          area: { top: '10%', right: '10%', left: '10%', bottom: '10%' }
+          area: { top: '15%', right: '15%', left: '15%', bottom: '15%' } // Smaller area for performance
         },
         decoder: {
           readers: [
@@ -356,8 +386,8 @@ export default function App() {
         },
         locate: true,
         locator: {
-          patchSize: 'large', // Increased for better detection
-          halfSample: false,  // Use full resolution
+          patchSize: 'medium', // Optimized: reduced CPU usage
+          halfSample: true,   // Optimized: enable half sampling for performance
           debug: {
             showCanvas: false,
             showPatches: false,
@@ -373,8 +403,8 @@ export default function App() {
             }
           }
         },
-        numOfWorkers: 0, // Disable workers for better compatibility
-        frequency: 2, // Reduced frequency for better performance and accuracy
+        numOfWorkers: 1, // Optimized: use 1 worker for better performance
+        frequency: 5, // Optimized: reduced CPU usage (scan every 5 frames)
         debug: {
           drawBoundingBox: true,
           drawScanline: true
@@ -400,6 +430,7 @@ export default function App() {
         }
         
         console.log('✅ Quagga initialized successfully');
+        setScannerState('active');
         console.log('🔗 Setting up event listeners...');
         
         // Remove any existing event listeners safely
@@ -413,9 +444,9 @@ export default function App() {
         
         // Add detection event listener
         Quagga.onDetected((result) => {
-          // Double-check we're still scanning to prevent processing old events
-          if (!isScanning) {
-            console.log('⚠️ Ignoring detection - scanner not active');
+          // Check scanner state and processing flag
+          if (!shouldProcessDetection.current || scannerState !== 'active') {
+            console.log('⚠️ Ignoring detection - scanner not active or processing disabled');
             return;
           }
           
@@ -432,14 +463,19 @@ export default function App() {
           
           if (isValidLength && confidence > minConfidence) {
             console.log('✅ Valid barcode detected:', code);
+            
+            // Immediately disable processing to prevent duplicates
+            shouldProcessDetection.current = false;
+            setScannerState('stopping');
+            
             setScannedBarcode(code);
             
-            // Stop scanner immediately to prevent multiple detections
-            stopScanner();
-            
-            // Auto-analyze the scanned barcode
-            fetchProductData(code);
-            switchToScreen('result');
+            // Stop scanner with delay to ensure proper cleanup
+            setTimeout(() => {
+              stopScanner();
+              fetchProductData(code);
+              switchToScreen('result');
+            }, 100);
           } else {
             console.log(`⚠️ Detection rejected - Length: ${code?.length}, Confidence: ${confidence}, Min required: ${minConfidence}`);
             // Continue scanning instead of giving up
@@ -492,6 +528,8 @@ export default function App() {
     }
     setIsScanning(false);
     setScannedBarcode('');
+    setScannerState('idle');
+    shouldProcessDetection.current = false;
   };
 
   const switchToScreen = (screenName) => {
