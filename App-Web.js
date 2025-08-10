@@ -201,9 +201,9 @@ export default function App() {
       setTimeout(() => startScanner(), 100); // Small delay to ensure DOM is ready
     }
     
-    // Cleanup scanner when component unmounts or leaving camera screen
+    // Cleanup scanner when leaving camera screen
     return () => {
-      if (currentScreen !== 'camera') {
+      if (currentScreen !== 'camera' && isScanning) {
         console.log('🛑 Leaving camera screen, stopping scanner...');
         stopScanner();
       }
@@ -213,13 +213,22 @@ export default function App() {
   useEffect(() => {
     // Cleanup on component unmount
     return () => {
-      stopScanner();
+      if (isScanning) {
+        console.log('🧹 Component unmounting, cleaning up scanner...');
+        stopScanner();
+      }
     };
   }, []);
 
   const startScanner = async () => {
     if (!Quagga || Platform.OS !== 'web') {
       setCameraError('Camera scanning not available on this platform');
+      return;
+    }
+
+    // Prevent multiple simultaneous scanner starts
+    if (isScanning) {
+      console.log('⚠️ Scanner already running, ignoring start request');
       return;
     }
 
@@ -233,9 +242,12 @@ export default function App() {
 
       // Stop any existing scanner first
       try {
-        Quagga.stop();
+        if (Quagga && typeof Quagga.stop === 'function') {
+          Quagga.stop();
+          console.log('🛑 Stopped existing scanner');
+        }
       } catch (e) {
-        console.log('No existing scanner to stop');
+        console.log('No existing scanner to stop (this is normal)');
       }
       
       // Check if we're running on HTTPS or localhost
@@ -344,11 +356,23 @@ export default function App() {
         console.log('✅ Quagga initialized successfully');
         console.log('🔗 Setting up event listeners...');
         
-        // Remove any existing event listeners
-        Quagga.offDetected();
+        // Remove any existing event listeners safely
+        try {
+          if (typeof Quagga.offDetected === 'function') {
+            Quagga.offDetected();
+          }
+        } catch (e) {
+          console.log('No existing listeners to remove');
+        }
         
         // Add detection event listener
         Quagga.onDetected((result) => {
+          // Double-check we're still scanning to prevent processing old events
+          if (!isScanning) {
+            console.log('⚠️ Ignoring detection - scanner not active');
+            return;
+          }
+          
           console.log('🔍 Barcode detected:', result);
           const code = result.codeResult.code;
           const confidence = result.codeResult.quality || 0;
@@ -360,8 +384,7 @@ export default function App() {
             setScannedBarcode(code);
             
             // Stop scanner immediately to prevent multiple detections
-            Quagga.stop();
-            setIsScanning(false);
+            stopScanner();
             
             // Auto-analyze the scanned barcode
             fetchProductData(code);
@@ -399,11 +422,20 @@ export default function App() {
     console.log('🛑 Stopping barcode scanner');
     if (Quagga) {
       try {
-        Quagga.stop();
-        Quagga.offDetected();
-        console.log('✅ Scanner stopped successfully');
+        // Check if Quagga is initialized before stopping
+        if (typeof Quagga.stop === 'function') {
+          Quagga.stop();
+          console.log('✅ Scanner stopped successfully');
+        }
+        
+        // Safely remove event listeners
+        if (typeof Quagga.offDetected === 'function') {
+          Quagga.offDetected();
+          console.log('✅ Event listeners removed');
+        }
       } catch (error) {
-        console.error('Error stopping scanner:', error);
+        // Log but don't throw - this is expected during cleanup
+        console.warn('Scanner stop warning (safe to ignore):', error.message);
       }
     }
     setIsScanning(false);
