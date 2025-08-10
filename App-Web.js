@@ -268,10 +268,12 @@ export default function App() {
     }
 
     try {
+      console.log('🚀 Starting scanner - setting states...');
       setIsScanning(true);
       setScannerState('starting'); // Set to starting immediately
       setCameraError(null);
       setScannedBarcode('');
+      console.log('✅ States set - isScanning: true, scannerState: starting');
 
       console.log('📦 QuaggaJS loaded successfully');
       console.log('🔄 Starting camera scanner...');
@@ -437,7 +439,9 @@ export default function App() {
         }
         
         console.log('✅ Quagga initialized successfully');
+        console.log('🔄 Setting scanner state to active...');
         setScannerState('active');
+        console.log('✅ Scanner state set to active');
         console.log('🔗 Setting up event listeners...');
         
         // Remove any existing event listeners safely
@@ -451,18 +455,15 @@ export default function App() {
         
         // Add detection event listener
         Quagga.onDetected((result) => {
-          // More robust check - use refs to get current state
+          // Ultra-simple check - just verify we're on camera screen
           const currentScreen = getCurrentScreen();
-          const isOnCameraScreen = currentScreen === 'camera';
-          const shouldProcess = shouldProcessDetection.current;
           
           console.log('🔍 Barcode detection attempt:');
           console.log('   - Current screen:', currentScreen);
-          console.log('   - On camera screen:', isOnCameraScreen);
-          console.log('   - Should process flag:', shouldProcess);
+          console.log('   - Processing enabled:', currentScreen === 'camera');
           
-          if (!isOnCameraScreen || !shouldProcess) {
-            console.log('⚠️ Ignoring detection - not ready');
+          if (currentScreen !== 'camera') {
+            console.log('⚠️ Ignoring detection - not on camera screen');
             return;
           }
           
